@@ -65,12 +65,7 @@ export const useReceiptHandlers = (
 
     try {
       const savedSettings = localStorage.getItem('ecomkassa_settings');
-      const aiSettings = localStorage.getItem('ai_provider_settings');
-      
-      const settings = {
-        ...(savedSettings ? JSON.parse(savedSettings) : {}),
-        ...(aiSettings ? JSON.parse(aiSettings) : {})
-      };
+      const settings = savedSettings ? JSON.parse(savedSettings) : {};
       
       const contextMessage = localStorage.getItem('context_message') || '';
       settings.context_message = contextMessage;
@@ -170,12 +165,7 @@ export const useReceiptHandlers = (
     
     try {
       const savedSettings = localStorage.getItem('ecomkassa_settings');
-      const aiSettings = localStorage.getItem('ai_provider_settings');
-      
-      const settings = {
-        ...(savedSettings ? JSON.parse(savedSettings) : {}),
-        ...(aiSettings ? JSON.parse(aiSettings) : {})
-      };
+      const settings = savedSettings ? JSON.parse(savedSettings) : {};
       
       const data = await confirmReceipt(
         pendingReceipt.userInput,

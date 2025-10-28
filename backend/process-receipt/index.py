@@ -343,15 +343,49 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     (settings.get('ecomkassa_password') or settings.get('password')) and \
                     settings.get('group_code')
     
-    active_ai_provider = settings.get('active_ai_provider', '')
-    has_any_ai = any([
-        settings.get('gigachat_auth_key'),
-        settings.get('openrouter_api_key'),
-        settings.get('anthropic_api_key'),
-        settings.get('openai_api_key'),
-        settings.get('yandexgpt_api_key'),
-        settings.get('gptunnel_api_key')
-    ])
+    # Get AI settings from database (admin-level settings)
+    database_url = os.environ.get('DATABASE_URL')
+    active_ai_provider = ''
+    has_admin_ai = False
+    
+    if database_url:
+        try:
+            import psycopg2
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT active_provider FROM ai_settings ORDER BY id DESC LIMIT 1")
+            row = cur.fetchone()
+            if row and row[0]:
+                active_ai_provider = row[0]
+                # Check if corresponding environment variable exists
+                if active_ai_provider == 'gigachat':
+                    has_admin_ai = bool(os.environ.get('GIGACHAT_AUTH_KEY'))
+                elif active_ai_provider == 'yandexgpt':
+                    has_admin_ai = bool(os.environ.get('YANDEXGPT_API_KEY'))
+                elif active_ai_provider == 'gptunnel_chatgpt':
+                    has_admin_ai = bool(os.environ.get('GPTUNNEL_API_KEY'))
+                
+                # Pass admin AI settings to the function
+                if has_admin_ai:
+                    if active_ai_provider == 'gigachat':
+                        settings['gigachat_auth_key'] = os.environ.get('GIGACHAT_AUTH_KEY')
+                        settings['active_ai_provider'] = 'gigachat'
+                    elif active_ai_provider == 'yandexgpt':
+                        settings['yandexgpt_api_key'] = os.environ.get('YANDEXGPT_API_KEY')
+                        settings['yandexgpt_folder_id'] = os.environ.get('YANDEXGPT_FOLDER_ID', '')
+                        settings['active_ai_provider'] = 'yandexgpt'
+                    elif active_ai_provider == 'gptunnel_chatgpt':
+                        settings['gptunnel_api_key'] = os.environ.get('GPTUNNEL_API_KEY')
+                        settings['active_ai_provider'] = 'gptunnel_chatgpt'
+                        # Get selected model
+                        cur.execute("SELECT selected_model FROM ai_settings ORDER BY id DESC LIMIT 1")
+                        model_row = cur.fetchone()
+                        if model_row and model_row[0]:
+                            settings['gptunnel_model'] = model_row[0]
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"[WARNING] Failed to get admin AI settings: {e}")
     
     if not has_ecomkassa and not preview_only:
         return {
@@ -367,7 +401,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             })
         }
     
-    if (not has_any_ai or not active_ai_provider) and not preview_only:
+    if (not has_admin_ai or not active_ai_provider) and not preview_only:
         return {
             'statusCode': 400,
             'headers': {
