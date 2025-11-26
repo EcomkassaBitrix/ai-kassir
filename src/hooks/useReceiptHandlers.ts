@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Message } from '@/types/message';
-import { sendReceiptPreview, confirmReceipt } from '@/services/receiptApi';
+import { sendReceiptPreview, confirmReceipt, loadUserSettings } from '@/services/receiptApi';
 
 const OPERATION_NAMES: Record<string, string> = {
   sell: 'Продажа',
@@ -64,13 +64,12 @@ export const useReceiptHandlers = (
     setEditedData(null);
 
     try {
-      const savedSettings = localStorage.getItem('ecomkassa_settings');
-      const settings = savedSettings ? JSON.parse(savedSettings) : {};
+      const serverSettings = await loadUserSettings();
       
       const contextMessage = localStorage.getItem('context_message') || '';
-      settings.context_message = contextMessage;
+      serverSettings.context_message = contextMessage;
       
-      const data = await sendReceiptPreview(userInput, operationType, settings, lastReceiptData);
+      const data = await sendReceiptPreview(userInput, operationType, serverSettings, lastReceiptData);
 
       if (data.error) {
         const currentContext = localStorage.getItem('context_message') || '';
@@ -164,15 +163,14 @@ export const useReceiptHandlers = (
     });
     
     try {
-      const savedSettings = localStorage.getItem('ecomkassa_settings');
-      const settings = savedSettings ? JSON.parse(savedSettings) : {};
+      const serverSettings = await loadUserSettings();
       
       const data = await confirmReceipt(
         pendingReceipt.userInput,
         pendingReceipt.operationType,
         editedData,
         lastReceiptData,
-        settings
+        serverSettings
       );
 
       const typeName = OPERATION_NAMES[pendingReceipt.operationType] || pendingReceipt.operationType;

@@ -1,4 +1,30 @@
 const RECEIPT_API_URL = 'https://functions.poehali.dev/734da785-2867-4c5d-b20c-90fc6d86b11c';
+const USER_SETTINGS_API_URL = 'https://functions.poehali.dev/e8972b95-5a58-4023-8f81-5385338d4590';
+
+import { getUserId } from '@/utils/userId';
+
+export const loadUserSettings = async () => {
+  const userId = getUserId();
+  
+  try {
+    const response = await fetch(USER_SETTINGS_API_URL, {
+      headers: {
+        'X-User-Id': userId
+      }
+    });
+
+    if (!response.ok) {
+      console.error('[Settings] Failed to load from server');
+      return {};
+    }
+
+    const data = await response.json();
+    return data.settings || {};
+  } catch (error) {
+    console.error('[Settings] Error loading settings:', error);
+    return {};
+  }
+};
 
 export const sendReceiptPreview = async (
   userInput: string,
