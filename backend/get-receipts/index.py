@@ -33,19 +33,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({'error': 'Method not allowed'})
         }
     
-    headers = event.get('headers', {})
-    user_id = headers.get('X-User-Id') or headers.get('x-user-id')
-    
-    if not user_id:
-        return {
-            'statusCode': 400,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps({'error': 'X-User-Id header required'})
-        }
-    
     query_params = event.get('queryStringParameters') or {}
     limit = int(query_params.get('limit', '50'))
     offset = int(query_params.get('offset', '0'))
@@ -76,24 +63,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
         has_payments = cursor.fetchone() is not None
         
-        schema = 't_p7891941_voice_ai_agent_1'
-        
         if has_payments:
             cursor.execute(
                 f"SELECT id, external_id, user_message, operation_type, items, total, "
                 f"payment_type, payments, customer_email, status, demo_mode, created_at, uuid "
-                f"FROM {schema}.receipts WHERE user_id = '{user_id}' ORDER BY created_at DESC LIMIT {limit} OFFSET {offset}"
+                f"FROM receipts ORDER BY created_at DESC LIMIT {limit} OFFSET {offset}"
             )
         else:
             cursor.execute(
                 f"SELECT id, external_id, user_message, operation_type, items, total, "
                 f"payment_type, customer_email, status, demo_mode, created_at, uuid "
-                f"FROM {schema}.receipts WHERE user_id = '{user_id}' ORDER BY created_at DESC LIMIT {limit} OFFSET {offset}"
+                f"FROM receipts ORDER BY created_at DESC LIMIT {limit} OFFSET {offset}"
             )
         
         receipts = cursor.fetchall()
         
-        cursor.execute(f"SELECT COUNT(*) as total FROM {schema}.receipts WHERE user_id = '{user_id}'")
+        cursor.execute("SELECT COUNT(*) as total FROM receipts")
         total_count = cursor.fetchone()['total']
         
         cursor.close()
