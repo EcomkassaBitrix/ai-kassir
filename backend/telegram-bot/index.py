@@ -1109,49 +1109,71 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
         
         receipt_data = result[0]
         
+        print(f"[DEBUG] Updating field '{field}' with value '{new_value}' for preview_id '{preview_id}'")
+        print(f"[DEBUG] Current receipt_data type: {type(receipt_data)}")
+        
         # Update specific field
         if field == 'item':
             if receipt_data.get('items') and len(receipt_data['items']) > 0:
+                old_name = receipt_data['items'][0]['name']
                 receipt_data['items'][0]['name'] = new_value
+                print(f"[DEBUG] Updated item name: '{old_name}' -> '{new_value}'")
+            else:
+                print(f"[ERROR] No items found in receipt_data")
+                return False
         elif field == 'price':
             try:
                 price = float(new_value.replace('₽', '').replace('руб', '').strip())
                 if receipt_data.get('items') and len(receipt_data['items']) > 0:
+                    old_price = receipt_data['items'][0]['price']
                     receipt_data['items'][0]['price'] = price
                     receipt_data['total'] = price * receipt_data['items'][0].get('quantity', 1)
                     if receipt_data.get('payments'):
                         receipt_data['payments'][0]['sum'] = receipt_data['total']
-            except ValueError:
-                print(f"[ERROR] Invalid price value: {new_value}")
+                    print(f"[DEBUG] Updated price: {old_price} -> {price}, total: {receipt_data['total']}")
+                else:
+                    print(f"[ERROR] No items found in receipt_data")
+                    return False
+            except ValueError as ve:
+                print(f"[ERROR] Invalid price value: {new_value}, error: {ve}")
                 return False
         elif field == 'quantity':
             try:
                 qty = float(new_value)
                 if receipt_data.get('items') and len(receipt_data['items']) > 0:
+                    old_qty = receipt_data['items'][0]['quantity']
                     receipt_data['items'][0]['quantity'] = qty
                     receipt_data['total'] = receipt_data['items'][0]['price'] * qty
                     if receipt_data.get('payments'):
                         receipt_data['payments'][0]['sum'] = receipt_data['total']
-            except ValueError:
-                print(f"[ERROR] Invalid quantity value: {new_value}")
+                    print(f"[DEBUG] Updated quantity: {old_qty} -> {qty}, total: {receipt_data['total']}")
+                else:
+                    print(f"[ERROR] No items found in receipt_data")
+                    return False
+            except ValueError as ve:
+                print(f"[ERROR] Invalid quantity value: {new_value}, error: {ve}")
                 return False
         elif field == 'email':
             if 'client' not in receipt_data:
                 receipt_data['client'] = {}
             receipt_data['client']['email'] = new_value
+            print(f"[DEBUG] Updated email to: {new_value}")
         elif field == 'phone':
             if 'client' not in receipt_data:
                 receipt_data['client'] = {}
             receipt_data['client']['phone'] = new_value
+            print(f"[DEBUG] Updated phone to: {new_value}")
         else:
             print(f"[ERROR] Unknown field: {field}")
             return False
         
-        # Save updated receipt_data
+        # Save updated receipt_data (psycopg2 handles dict -> JSONB conversion automatically)
+        print(f"[DEBUG] Saving updated receipt_data to database...")
         cur.execute(
             "UPDATE telegram_previews SET receipt_data = %s WHERE preview_id = %s",
             (json.dumps(receipt_data), preview_id)
         )
+        print(f"[DEBUG] Database update successful, affected rows: {cur.rowcount}")
         
         conn.commit()
         cur.close()
