@@ -91,6 +91,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return create_response({'ok': True})
         
         user_id = get_user_id_for_telegram(chat_id)
+        print(f"[DEBUG] chat_id={chat_id}, resolved user_id='{user_id}'")
         
         receipt_result = process_receipt_ai(text, user_id)
         
