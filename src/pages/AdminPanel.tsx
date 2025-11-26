@@ -297,8 +297,67 @@ const TelegramBotSettings = () => {
   const [botToken, setBotToken] = useState('');
   const [checking, setChecking] = useState(false);
   const [setting, setSetting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const webhookUrl = 'https://functions.poehali.dev/c931c0bd-bad6-4f16-9a76-f67296c311b1';
+  const tokenApiUrl = 'https://functions.poehali.dev/1772f7f7-7ca3-404c-9472-9f7b3e502238';
+
+  useEffect(() => {
+    loadToken();
+  }, []);
+
+  const loadToken = async () => {
+    const adminToken = localStorage.getItem('admin_token');
+    if (!adminToken) return;
+
+    try {
+      const response = await fetch(tokenApiUrl, {
+        headers: { 'X-Admin-Token': adminToken }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setBotToken(data.token || '');
+      }
+    } catch (error) {
+      console.error('Failed to load token');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveToken = async () => {
+    if (!botToken) {
+      toast.error('Введите токен бота');
+      return;
+    }
+
+    const adminToken = localStorage.getItem('admin_token');
+    if (!adminToken) return;
+
+    setSaving(true);
+    try {
+      const response = await fetch(tokenApiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Token': adminToken
+        },
+        body: JSON.stringify({ token: botToken })
+      });
+
+      if (response.ok) {
+        toast.success('Токен сохранён');
+      } else {
+        toast.error('Ошибка сохранения');
+      }
+    } catch (error) {
+      toast.error('Ошибка сохранения');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const checkWebhook = async () => {
     if (!botToken) {
@@ -384,6 +443,15 @@ const TelegramBotSettings = () => {
               Получите токен у <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">@BotFather</a>
             </p>
           </div>
+
+          <Button
+            onClick={saveToken}
+            disabled={saving || !botToken}
+            className="w-full"
+          >
+            <Icon name="Save" size={16} className="mr-2" />
+            {saving ? 'Сохранение...' : 'Сохранить токен'}
+          </Button>
 
           <div className="flex gap-2">
             <Button

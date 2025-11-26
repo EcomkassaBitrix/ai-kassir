@@ -34,7 +34,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({'error': 'Method not allowed'})
         }
     
-    bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', '8367558133:AAG8btCuHLitqaRlgS_HwUsgSIRO8bZJCr0')
+    bot_token = get_bot_token()
     if not bot_token:
         return {
             'statusCode': 500,
@@ -258,3 +258,34 @@ def get_user_id_for_telegram(telegram_chat_id: int) -> str:
     finally:
         cur.close()
         conn.close()
+
+
+def get_bot_token() -> str:
+    default_token = '8367558133:AAG8btCuHLitqaRlgS_HwUsgSIRO8bZJCr0'
+    
+    env_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+    if env_token:
+        return env_token
+    
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return default_token
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT setting_value FROM ai_settings WHERE setting_key = 'telegram_bot_token'"
+        )
+        result = cur.fetchone()
+        
+        cur.close()
+        conn.close()
+        
+        if result:
+            return result[0]
+        
+        return default_token
+    except Exception:
+        return default_token
