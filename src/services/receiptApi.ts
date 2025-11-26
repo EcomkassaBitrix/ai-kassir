@@ -38,6 +38,7 @@ export const loadUserSettings = async () => {
         if (migrateResponse.ok) {
           const migrateData = await migrateResponse.json();
           const newUserId = migrateData.new_user_id;
+          localStorage.setItem('ecomkassa_login', settings.ecomkassa_login);
           localStorage.setItem('poehali_user_id', newUserId);
           console.log('[MIGRATION] User migrated during settings load:', migrateData);
         }
