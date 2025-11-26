@@ -5,6 +5,7 @@ import { ReceiptPreview } from './ReceiptPreview';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 interface Message {
   id: string;
@@ -114,15 +115,51 @@ export const ChatMessage = ({
           >
           <p className="text-sm leading-relaxed">{message.content}</p>
           {message.previewData && editedData && (
-            <ReceiptPreview
-              editedData={editedData}
-              editMode={editMode}
-              isProcessing={isProcessing}
-              updateEditedField={updateEditedField}
-              handleEditToggle={handleEditToggle}
-              handleConfirmReceipt={handleConfirmReceipt}
-              handleCancelReceipt={handleCancelReceipt}
-            />
+            <Dialog open={true} onOpenChange={(open) => !open && handleCancelReceipt()}>
+              <DialogContent className="max-w-lg max-h-[90vh] flex flex-col p-0 gap-0">
+                <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
+                  <DialogTitle>Предпросмотр чека</DialogTitle>
+                </DialogHeader>
+                <div className="flex-1 overflow-y-auto px-6 py-4">
+                  <ReceiptPreview
+                    editedData={editedData}
+                    editMode={editMode}
+                    isProcessing={isProcessing}
+                    updateEditedField={updateEditedField}
+                    handleEditToggle={handleEditToggle}
+                    handleConfirmReceipt={handleConfirmReceipt}
+                    handleCancelReceipt={handleCancelReceipt}
+                  />
+                </div>
+                <DialogFooter className="px-6 py-4 border-t shrink-0 flex-row gap-2">
+                  <Button 
+                    onClick={handleEditToggle}
+                    variant="outline"
+                    size="sm"
+                    disabled={isProcessing}
+                  >
+                    <Icon name={editMode ? "Save" : "Edit"} size={16} className="mr-2" />
+                    {editMode ? 'Готово' : 'Редактировать'}
+                  </Button>
+                  <Button 
+                    onClick={handleConfirmReceipt} 
+                    disabled={isProcessing}
+                    className="flex-1"
+                  >
+                    <Icon name={editedData.bulk_count && editedData.original_uuid ? "Copy" : "Check"} size={16} className="mr-2" />
+                    {editedData.bulk_count && editedData.original_uuid ? `Создать ${editedData.bulk_count} копий` : 'Отправить чек'}
+                  </Button>
+                  <Button 
+                    onClick={handleCancelReceipt}
+                    variant="ghost"
+                    size="sm"
+                    disabled={isProcessing}
+                  >
+                    <Icon name="X" size={16} />
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           )}
           {message.hasError && message.errorMessage && (
             <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">

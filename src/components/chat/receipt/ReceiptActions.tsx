@@ -122,34 +122,6 @@ export const ReceiptActions = ({
           );
         })()}
       </div>
-      
-      <div className="flex gap-2 pt-2">
-        <Button 
-          onClick={handleEditToggle}
-          variant="outline"
-          size="sm"
-          disabled={isProcessing}
-        >
-          <Icon name={editMode ? "Save" : "Edit"} size={16} className="mr-2" />
-          {editMode ? 'Готово' : 'Редактировать'}
-        </Button>
-        <Button 
-          onClick={handleConfirmReceipt} 
-          disabled={isProcessing}
-          className="flex-1"
-        >
-          <Icon name={isBulkMode ? "Copy" : "Check"} size={16} className="mr-2" />
-          {isBulkMode ? `Создать ${editedData.bulk_count} копий` : 'Отправить чек'}
-        </Button>
-        <Button 
-          onClick={handleCancelReceipt}
-          variant="ghost"
-          size="sm"
-          disabled={isProcessing}
-        >
-          <Icon name="X" size={16} />
-        </Button>
-      </div>
     </>
   );
 };
