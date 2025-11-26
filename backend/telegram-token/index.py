@@ -1,8 +1,6 @@
 import json
 import os
 import psycopg2
-import hashlib
-import time
 from typing import Dict, Any
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -33,33 +31,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return {
             'statusCode': 401,
             'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'error': 'No token provided'})
-        }
-    
-    admin_password = os.environ.get('ADMIN_PASSWORD', '')
-    if not admin_password:
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'error': 'Admin not configured'})
-        }
-    
-    current_time = int(time.time())
-    is_valid = False
-    
-    for minutes_offset in range(-120, 121):
-        timestamp = current_time + (minutes_offset * 60)
-        token_data = f"{admin_password}:{timestamp}"
-        expected_token = hashlib.sha256(token_data.encode()).hexdigest()
-        if admin_token == expected_token:
-            is_valid = True
-            break
-    
-    if not is_valid:
-        return {
-            'statusCode': 401,
-            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'error': 'Invalid or expired token'})
+            'body': json.dumps({'error': 'Admin access required'})
         }
     
     dsn = os.environ.get('DATABASE_URL')
