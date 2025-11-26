@@ -29,6 +29,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     headers = event.get('headers', {})
     admin_token = headers.get('X-Admin-Token') or headers.get('x-admin-token')
     
+    print(f"DEBUG: Received token: {admin_token[:20] if admin_token else 'None'}...")
+    
     if not admin_token:
         return {
             'statusCode': 401,
@@ -49,6 +51,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     for offset in range(-3600, 3601, 60):
         token_data = f"{admin_password}:{current_time + offset}"
         valid_tokens.append(hashlib.sha256(token_data.encode()).hexdigest())
+    
+    print(f"DEBUG: Generated {len(valid_tokens)} valid tokens")
+    print(f"DEBUG: Sample expected token: {valid_tokens[0][:20]}...")
+    print(f"DEBUG: Token match: {admin_token in valid_tokens}")
     
     if admin_token not in valid_tokens:
         return {
