@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
 import { AISettingsSectionNew } from '@/components/settings/AISettingsSectionNew';
@@ -27,16 +28,21 @@ export const AdminPanel = () => {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [adminToken, setAdminToken] = useState<string>('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     const token = localStorage.getItem('admin_token');
     if (!token) {
-      navigate('/admin-login');
+      setIsAuthenticated(false);
+      setLoading(false);
       return;
     }
 
     setAdminToken(token);
+    setIsAuthenticated(true);
     loadStats(token);
   }, [navigate]);
 
@@ -50,7 +56,7 @@ export const AdminPanel = () => {
 
       if (response.status === 401) {
         localStorage.removeItem('admin_token');
-        navigate('/admin-login');
+        setIsAuthenticated(false);
         return;
       }
 
@@ -67,9 +73,39 @@ export const AdminPanel = () => {
     }
   };
 
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginLoading(true);
+
+    try {
+      const response = await fetch('https://functions.poehali.dev/9e5db515-a0fc-4981-9d4f-6f4fd56861b2', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.token) {
+        localStorage.setItem('admin_token', data.token);
+        setAdminToken(data.token);
+        setIsAuthenticated(true);
+        toast.success('Вход выполнен');
+        await loadStats(data.token);
+      } else {
+        toast.error('Неверный пароль');
+      }
+    } catch (error) {
+      toast.error('Ошибка подключения');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('admin_token');
-    navigate('/admin-login');
+    setIsAuthenticated(false);
+    setPassword('');
   };
 
   if (loading) {
@@ -79,6 +115,43 @@ export const AdminPanel = () => {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
           <p className="text-muted-foreground">Загрузка...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-purple-950/20 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md p-8">
+          <div className="flex flex-col items-center mb-6">
+            <div className="w-16 h-16 bg-purple-500/10 rounded-full flex items-center justify-center mb-4">
+              <Icon name="Lock" size={32} className="text-purple-500" />
+            </div>
+            <h1 className="text-2xl font-bold">Админ-панель</h1>
+            <p className="text-sm text-muted-foreground mt-1">Введите пароль для входа</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <Input
+                type="password"
+                placeholder="Введите пароль"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full"
+                disabled={loginLoading}
+              />
+            </div>
+
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loginLoading || !password}
+            >
+              {loginLoading ? 'Проверка...' : 'Войти'}
+            </Button>
+          </form>
+        </Card>
       </div>
     );
   }
