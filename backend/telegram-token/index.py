@@ -27,7 +27,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     headers = event.get('headers', {})
     admin_token = headers.get('X-Admin-Token') or headers.get('x-admin-token')
     
-    if not admin_token or admin_token != os.environ.get('ADMIN_PASSWORD'):
+    if not admin_token:
+        return {
+            'statusCode': 401,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps({'error': 'Unauthorized'})
+        }
+    
+    admin_secret = os.environ.get('ADMIN_SECRET', 'default-secret-key')
+    if admin_token != f"admin_{admin_secret}":
         return {
             'statusCode': 401,
             'headers': {'Content-Type': 'application/json'},
