@@ -11,7 +11,6 @@ export const TelegramBotSettings = () => {
   const [botToken, setBotToken] = useState('');
   const [checking, setChecking] = useState(false);
   const [toggling, setToggling] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const webhookUrl = 'https://functions.poehali.dev/c931c0bd-bad6-4f16-9a76-f67296c311b1';
@@ -44,39 +43,6 @@ export const TelegramBotSettings = () => {
     }
   };
 
-  const saveToken = async () => {
-    if (!botToken) {
-      toast.error('Введите токен бота');
-      return;
-    }
-
-    const adminToken = localStorage.getItem('admin_token');
-    if (!adminToken) return;
-
-    setSaving(true);
-    try {
-      const response = await fetch(tokenApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-Token': adminToken
-        },
-        body: JSON.stringify({ token: botToken })
-      });
-
-      if (response.ok) {
-        toast.success('Токен сохранён');
-        await checkWebhook();
-      } else {
-        toast.error('Ошибка сохранения');
-      }
-    } catch (error) {
-      toast.error('Ошибка сохранения');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const checkWebhook = async (token?: string) => {
     const currentToken = token || botToken;
     if (!currentToken) return;
@@ -105,25 +71,54 @@ export const TelegramBotSettings = () => {
 
   const toggleWebhook = async () => {
     if (!botToken) {
-      toast.error('Сначала сохраните токен бота');
+      toast.error('Введите токен бота');
       return;
     }
 
     setToggling(true);
+    
     try {
-      const url = webhookActive 
-        ? `https://api.telegram.org/bot${botToken}/deleteWebhook`
-        : `https://api.telegram.org/bot${botToken}/setWebhook?url=${webhookUrl}`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
+      if (webhookActive) {
+        const response = await fetch(`https://api.telegram.org/bot${botToken}/deleteWebhook`);
+        const data = await response.json();
 
-      if (data.ok) {
-        setWebhookActive(!webhookActive);
-        setWebhookStatus(webhookActive ? '⚠️ Бот отключен' : '✅ Бот подключен');
-        toast.success(webhookActive ? 'Бот отключен' : 'Бот подключен');
+        if (data.ok) {
+          setWebhookActive(false);
+          setWebhookStatus('⚠️ Бот отключен');
+          toast.success('Бот отключен');
+        } else {
+          toast.error(`Ошибка: ${data.description}`);
+        }
       } else {
-        toast.error(`Ошибка: ${data.description}`);
+        const adminToken = localStorage.getItem('admin_token');
+        if (!adminToken) return;
+
+        const saveResponse = await fetch(tokenApiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Admin-Token': adminToken
+          },
+          body: JSON.stringify({ token: botToken })
+        });
+
+        if (!saveResponse.ok) {
+          toast.error('Ошибка сохранения токена');
+          return;
+        }
+
+        const webhookResponse = await fetch(
+          `https://api.telegram.org/bot${botToken}/setWebhook?url=${webhookUrl}`
+        );
+        const webhookData = await webhookResponse.json();
+
+        if (webhookData.ok) {
+          setWebhookActive(true);
+          setWebhookStatus('✅ Бот подключен');
+          toast.success('Бот подключен!');
+        } else {
+          toast.error(`Ошибка: ${webhookData.description}`);
+        }
       }
     } catch (error) {
       toast.error('Ошибка подключения');
@@ -161,17 +156,8 @@ export const TelegramBotSettings = () => {
           </div>
 
           <Button
-            onClick={saveToken}
-            disabled={saving || !botToken}
-            className="w-full"
-          >
-            <Icon name="Save" size={16} className="mr-2" />
-            {saving ? 'Сохранение...' : 'Сохранить токен'}
-          </Button>
-
-          <Button
             onClick={toggleWebhook}
-            disabled={toggling || !botToken || saving}
+            disabled={toggling || !botToken}
             variant={webhookActive ? 'destructive' : 'default'}
             className="w-full"
           >
