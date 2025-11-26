@@ -241,8 +241,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if client_phone:
                 response_text += f"<b>📱 Телефон:</b> {client_phone}\n"
             
+            # Add operation_type to receipt_data
+            receipt_data['operation_type'] = operation_type
+            
             # Save preview data to send with callback
-            preview_id = save_preview_data(chat_id, text, user_id)
+            preview_id = save_preview_data(chat_id, text, user_id, receipt_data)
             
             # Send with inline keyboard
             send_telegram_message_with_buttons(
@@ -719,7 +722,7 @@ def edit_message(bot_token: str, chat_id: int, message_id: int, text: str) -> No
         print(f"[ERROR] Failed to edit message: {e}")
 
 
-def save_preview_data(chat_id: int, user_message: str, user_id: str) -> str:
+def save_preview_data(chat_id: int, user_message: str, user_id: str, receipt_data: dict = None) -> str:
     import time
     preview_id = f"{chat_id}_{int(time.time())}"
     
@@ -737,14 +740,15 @@ def save_preview_data(chat_id: int, user_message: str, user_id: str) -> str:
             "chat_id BIGINT, "
             "user_message TEXT, "
             "user_id TEXT, "
+            "receipt_data JSONB, "
             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
             ")"
         )
         
         cur.execute(
-            "INSERT INTO telegram_previews (preview_id, chat_id, user_message, user_id) "
-            "VALUES (%s, %s, %s, %s)",
-            (preview_id, chat_id, user_message, user_id)
+            "INSERT INTO telegram_previews (preview_id, chat_id, user_message, user_id, receipt_data) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (preview_id, chat_id, user_message, user_id, json.dumps(receipt_data) if receipt_data else None)
         )
         
         conn.commit()
@@ -766,7 +770,7 @@ def get_preview_data(preview_id: str) -> Optional[Dict[str, Any]]:
         cur = conn.cursor()
         
         cur.execute(
-            "SELECT user_message, user_id FROM telegram_previews WHERE preview_id = %s",
+            "SELECT user_message, user_id, receipt_data FROM telegram_previews WHERE preview_id = %s",
             (preview_id,)
         )
         
@@ -777,7 +781,8 @@ def get_preview_data(preview_id: str) -> Optional[Dict[str, Any]]:
         if result:
             return {
                 'user_message': result[0],
-                'user_id': result[1]
+                'user_id': result[1],
+                'receipt_data': result[2] if result[2] else None
             }
         
         return None
@@ -999,7 +1004,7 @@ def find_editing_preview_for_chat(chat_id: int) -> Optional[str]:
 
 
 def update_preview_field(preview_id: str, field: str, new_value: str, user_id: str) -> bool:
-    """Update a specific field in preview data by regenerating with AI"""
+    """Update a specific field in preview data directly in receipt_data"""
     dsn = os.environ.get('DATABASE_URL')
     if not dsn:
         return False
@@ -1008,36 +1013,61 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
         conn = psycopg2.connect(dsn)
         cur = conn.cursor()
         
-        # Get original message
+        # Get current receipt_data
         cur.execute(
-            "SELECT user_message FROM telegram_previews WHERE preview_id = %s",
+            "SELECT receipt_data FROM telegram_previews WHERE preview_id = %s",
             (preview_id,)
         )
         result = cur.fetchone()
         
-        if not result:
+        if not result or not result[0]:
+            print(f"[ERROR] No receipt_data found for preview_id: {preview_id}")
             return False
         
-        original_message = result[0]
+        receipt_data = result[0]
         
-        # Build new message based on field
+        # Update specific field
         if field == 'item':
-            new_message = f"{new_value} (оставь цену как была)"
+            if receipt_data.get('items') and len(receipt_data['items']) > 0:
+                receipt_data['items'][0]['name'] = new_value
         elif field == 'price':
-            new_message = f"{original_message.split()[0]} {new_value}₽"
+            try:
+                price = float(new_value.replace('₽', '').replace('руб', '').strip())
+                if receipt_data.get('items') and len(receipt_data['items']) > 0:
+                    receipt_data['items'][0]['price'] = price
+                    receipt_data['total'] = price * receipt_data['items'][0].get('quantity', 1)
+                    if receipt_data.get('payments'):
+                        receipt_data['payments'][0]['sum'] = receipt_data['total']
+            except ValueError:
+                print(f"[ERROR] Invalid price value: {new_value}")
+                return False
         elif field == 'quantity':
-            new_message = f"{new_value} шт {original_message}"
+            try:
+                qty = float(new_value)
+                if receipt_data.get('items') and len(receipt_data['items']) > 0:
+                    receipt_data['items'][0]['quantity'] = qty
+                    receipt_data['total'] = receipt_data['items'][0]['price'] * qty
+                    if receipt_data.get('payments'):
+                        receipt_data['payments'][0]['sum'] = receipt_data['total']
+            except ValueError:
+                print(f"[ERROR] Invalid quantity value: {new_value}")
+                return False
         elif field == 'email':
-            new_message = f"{original_message} {new_value}"
+            if 'client' not in receipt_data:
+                receipt_data['client'] = {}
+            receipt_data['client']['email'] = new_value
         elif field == 'phone':
-            new_message = f"{original_message} тел {new_value}"
+            if 'client' not in receipt_data:
+                receipt_data['client'] = {}
+            receipt_data['client']['phone'] = new_value
         else:
-            new_message = original_message
+            print(f"[ERROR] Unknown field: {field}")
+            return False
         
-        # Update user_message in preview
+        # Save updated receipt_data
         cur.execute(
-            "UPDATE telegram_previews SET user_message = %s WHERE preview_id = %s",
-            (new_message, preview_id)
+            "UPDATE telegram_previews SET receipt_data = %s WHERE preview_id = %s",
+            (json.dumps(receipt_data), preview_id)
         )
         
         conn.commit()
@@ -1057,21 +1087,16 @@ def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id:
         send_telegram_message(bot_token, chat_id, "❌ Ошибка: данные не найдены")
         return
     
-    user_message = preview_data['user_message']
-    
-    # Regenerate preview with updated message
-    preview_result = process_receipt_ai(user_message, user_id, preview_only=True)
-    
-    if not preview_result.get('preview'):
-        send_telegram_message(bot_token, chat_id, "❌ Ошибка при обновлении предпросмотра")
+    # Use stored receipt_data directly (already updated)
+    receipt_data = preview_data.get('receipt_data')
+    if not receipt_data:
+        send_telegram_message(bot_token, chat_id, "❌ Ошибка: данные чека не найдены")
         return
-    
-    receipt_data = preview_result.get('receipt', {})
     items = receipt_data.get('items', [])
     total = receipt_data.get('total', 0)
     payments = receipt_data.get('payments', [])
     client_data = receipt_data.get('client', {})
-    operation_type = preview_result.get('operation_type', 'sell')
+    operation_type = receipt_data.get('operation_type', 'sell')
     
     # Get saved payment type if exists
     payment_type_override = get_preview_payment_type(preview_id)
