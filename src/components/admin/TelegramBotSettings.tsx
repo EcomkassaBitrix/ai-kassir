@@ -2,16 +2,15 @@ import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
 
 export const TelegramBotSettings = () => {
   const [webhookStatus, setWebhookStatus] = useState<string | null>(null);
+  const [webhookActive, setWebhookActive] = useState(false);
   const [botToken, setBotToken] = useState('');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [setting, setSetting] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +33,9 @@ export const TelegramBotSettings = () => {
       if (response.ok) {
         const data = await response.json();
         setBotToken(data.token || '');
-        setNotificationsEnabled(data.enabled || false);
+        if (data.token) {
+          checkWebhook(data.token);
+        }
       }
     } catch (error) {
       console.error('Failed to load token');
@@ -65,6 +66,7 @@ export const TelegramBotSettings = () => {
 
       if (response.ok) {
         toast.success('Токен сохранён');
+        await checkWebhook();
       } else {
         toast.error('Ошибка сохранения');
       }
@@ -75,85 +77,58 @@ export const TelegramBotSettings = () => {
     }
   };
 
-  const toggleNotifications = async (enabled: boolean) => {
-    const adminToken = localStorage.getItem('admin_token');
-    if (!adminToken) return;
-
-    try {
-      const response = await fetch(tokenApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-Token': adminToken
-        },
-        body: JSON.stringify({ enabled })
-      });
-
-      if (response.ok) {
-        setNotificationsEnabled(enabled);
-        toast.success(enabled ? 'Уведомления включены' : 'Уведомления выключены');
-      } else {
-        toast.error('Ошибка сохранения');
-      }
-    } catch (error) {
-      toast.error('Ошибка сохранения');
-    }
-  };
-
-  const checkWebhook = async () => {
-    if (!botToken) {
-      toast.error('Введите токен бота');
-      return;
-    }
+  const checkWebhook = async (token?: string) => {
+    const currentToken = token || botToken;
+    if (!currentToken) return;
 
     setChecking(true);
     try {
-      const response = await fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`);
+      const response = await fetch(`https://api.telegram.org/bot${currentToken}/getWebhookInfo`);
       const data = await response.json();
 
       if (data.ok) {
         const info = data.result;
         if (info.url === webhookUrl) {
-          setWebhookStatus('✅ Webhook настроен правильно');
-          toast.success('Webhook активен');
-        } else if (info.url) {
-          setWebhookStatus(`⚠️ Webhook указывает на: ${info.url}`);
-          toast.warning('Webhook настроен на другой URL');
+          setWebhookStatus('✅ Бот подключен');
+          setWebhookActive(true);
         } else {
-          setWebhookStatus('❌ Webhook не настроен');
-          toast.error('Webhook не настроен');
+          setWebhookStatus('⚠️ Бот отключен');
+          setWebhookActive(false);
         }
       }
     } catch (error) {
-      toast.error('Ошибка проверки webhook');
+      console.error('Failed to check webhook');
     } finally {
       setChecking(false);
     }
   };
 
-  const setupWebhook = async () => {
+  const toggleWebhook = async () => {
     if (!botToken) {
-      toast.error('Введите токен бота');
+      toast.error('Сначала сохраните токен бота');
       return;
     }
 
-    setSetting(true);
+    setToggling(true);
     try {
-      const response = await fetch(
-        `https://api.telegram.org/bot${botToken}/setWebhook?url=${webhookUrl}`
-      );
+      const url = webhookActive 
+        ? `https://api.telegram.org/bot${botToken}/deleteWebhook`
+        : `https://api.telegram.org/bot${botToken}/setWebhook?url=${webhookUrl}`;
+      
+      const response = await fetch(url);
       const data = await response.json();
 
       if (data.ok) {
-        setWebhookStatus('✅ Webhook настроен успешно');
-        toast.success('Webhook настроен! Бот готов к работе');
+        setWebhookActive(!webhookActive);
+        setWebhookStatus(webhookActive ? '⚠️ Бот отключен' : '✅ Бот подключен');
+        toast.success(webhookActive ? 'Бот отключен' : 'Бот подключен');
       } else {
         toast.error(`Ошибка: ${data.description}`);
       }
     } catch (error) {
-      toast.error('Ошибка настройки webhook');
+      toast.error('Ошибка подключения');
     } finally {
-      setSetting(false);
+      setToggling(false);
     }
   };
 
@@ -194,36 +169,15 @@ export const TelegramBotSettings = () => {
             {saving ? 'Сохранение...' : 'Сохранить токен'}
           </Button>
 
-          <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-            <div>
-              <p className="font-medium">Уведомления в Telegram</p>
-              <p className="text-xs text-muted-foreground">Отправлять новый фидбек в Telegram</p>
-            </div>
-            <Switch
-              checked={notificationsEnabled}
-              onCheckedChange={toggleNotifications}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button
-              onClick={checkWebhook}
-              disabled={checking || !botToken}
-              variant="outline"
-              className="flex-1"
-            >
-              <Icon name="Search" size={16} className="mr-2" />
-              {checking ? 'Проверка...' : 'Проверить webhook'}
-            </Button>
-            <Button
-              onClick={setupWebhook}
-              disabled={setting || !botToken}
-              className="flex-1"
-            >
-              <Icon name="Check" size={16} className="mr-2" />
-              {setting ? 'Настройка...' : 'Настроить webhook'}
-            </Button>
-          </div>
+          <Button
+            onClick={toggleWebhook}
+            disabled={toggling || !botToken || saving}
+            variant={webhookActive ? 'destructive' : 'default'}
+            className="w-full"
+          >
+            <Icon name={webhookActive ? 'Power' : 'Check'} size={16} className="mr-2" />
+            {toggling ? 'Подождите...' : (webhookActive ? 'Отключить бота' : 'Подключить бота')}
+          </Button>
 
           {webhookStatus && (
             <div className="p-4 bg-muted rounded-lg">
