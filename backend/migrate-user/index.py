@@ -69,7 +69,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     cur = conn.cursor()
     
     # Check if new_user_id already exists
-    cur.execute('SELECT user_id FROM user_settings WHERE user_id = %s', (new_user_id,))
+    cur.execute('SELECT user_id FROM t_p7891941_voice_ai_agent_1.user_settings WHERE user_id = %s', (new_user_id,))
     existing = cur.fetchone()
     
     if existing:
@@ -81,13 +81,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     # Migrate: Update old_user_id -> new_user_id in user_settings
     cur.execute(
-        'UPDATE user_settings SET user_id = %s WHERE user_id = %s',
+        'UPDATE t_p7891941_voice_ai_agent_1.user_settings SET user_id = %s WHERE user_id = %s',
         (new_user_id, old_user_id)
     )
     
     # Migrate: Update old_user_id -> new_user_id in receipts table
     cur.execute(
-        'UPDATE receipts SET user_id = %s WHERE user_id = %s',
+        'UPDATE t_p7891941_voice_ai_agent_1.receipts SET user_id = %s WHERE user_id = %s',
         (new_user_id, old_user_id)
     )
     
