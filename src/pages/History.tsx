@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 interface Receipt {
   id: number;
   external_id: string;
+  user_id?: string;
   user_message: string;
   operation_type: string;
   items: Array<{ name: string; price: number; quantity: number }>;
@@ -45,8 +46,9 @@ const History = ({ setRepeatCommand }: HistoryProps) => {
       const data = await response.json();
 
       if (data.success) {
-        setReceipts(data.receipts);
-        setTotal(data.total);
+        const userReceipts = data.receipts.filter((receipt: Receipt) => receipt.user_id === userId);
+        setReceipts(userReceipts);
+        setTotal(userReceipts.length);
       } else {
         toast.error('Ошибка загрузки истории');
       }
