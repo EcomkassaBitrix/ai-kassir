@@ -7,7 +7,8 @@ def get_user_settings(user_id: str, conn) -> Optional[Dict[str, Any]]:
     '''Get user settings from database'''
     cur = conn.cursor()
     cur.execute(
-        "SELECT group_code, inn, sno, default_vat, company_email, payment_address, ecomkassa_login, ecomkassa_password "
+        "SELECT group_code, inn, sno, default_vat, company_email, payment_address, ecomkassa_login, ecomkassa_password, "
+        "active_ai_provider, gigachat_auth_key, yandexgpt_api_key, yandexgpt_folder_id, gptunnel_api_key "
         "FROM user_settings WHERE user_id = %s",
         (user_id,)
     )
@@ -23,7 +24,12 @@ def get_user_settings(user_id: str, conn) -> Optional[Dict[str, Any]]:
             'company_email': row[4] or '',
             'payment_address': row[5] or '',
             'ecomkassa_login': row[6] or '',
-            'ecomkassa_password': row[7] or ''
+            'ecomkassa_password': row[7] or '',
+            'active_ai_provider': row[8] or '',
+            'gigachat_auth_key': row[9] or '',
+            'yandexgpt_api_key': row[10] or '',
+            'yandexgpt_folder_id': row[11] or '',
+            'gptunnel_api_key': row[12] or ''
         }
     return None
 
@@ -32,8 +38,9 @@ def save_user_settings(user_id: str, settings: Dict[str, Any], conn) -> None:
     cur = conn.cursor()
     
     cur.execute(
-        "INSERT INTO user_settings (user_id, group_code, inn, sno, default_vat, company_email, payment_address, ecomkassa_login, ecomkassa_password, updated_at) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP) "
+        "INSERT INTO user_settings (user_id, group_code, inn, sno, default_vat, company_email, payment_address, ecomkassa_login, ecomkassa_password, "
+        "active_ai_provider, gigachat_auth_key, yandexgpt_api_key, yandexgpt_folder_id, gptunnel_api_key, updated_at) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP) "
         "ON CONFLICT (user_id) DO UPDATE SET "
         "group_code = EXCLUDED.group_code, "
         "inn = EXCLUDED.inn, "
@@ -43,6 +50,11 @@ def save_user_settings(user_id: str, settings: Dict[str, Any], conn) -> None:
         "payment_address = EXCLUDED.payment_address, "
         "ecomkassa_login = EXCLUDED.ecomkassa_login, "
         "ecomkassa_password = EXCLUDED.ecomkassa_password, "
+        "active_ai_provider = EXCLUDED.active_ai_provider, "
+        "gigachat_auth_key = EXCLUDED.gigachat_auth_key, "
+        "yandexgpt_api_key = EXCLUDED.yandexgpt_api_key, "
+        "yandexgpt_folder_id = EXCLUDED.yandexgpt_folder_id, "
+        "gptunnel_api_key = EXCLUDED.gptunnel_api_key, "
         "updated_at = CURRENT_TIMESTAMP",
         (
             user_id,
@@ -53,7 +65,12 @@ def save_user_settings(user_id: str, settings: Dict[str, Any], conn) -> None:
             settings.get('company_email', ''),
             settings.get('payment_address', ''),
             settings.get('ecomkassa_login', ''),
-            settings.get('ecomkassa_password', '')
+            settings.get('ecomkassa_password', ''),
+            settings.get('active_ai_provider', ''),
+            settings.get('gigachat_auth_key', ''),
+            settings.get('yandexgpt_api_key', ''),
+            settings.get('yandexgpt_folder_id', ''),
+            settings.get('gptunnel_api_key', '')
         )
     )
     

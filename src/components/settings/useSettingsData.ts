@@ -81,9 +81,6 @@ export const useSettingsData = () => {
 
       const data = await response.json();
       const serverSettings = data.settings || {};
-      
-      const localAI = localStorage.getItem('ai_provider_settings');
-      const aiSettings = localAI ? JSON.parse(localAI) : {};
 
       setSettings({
         group_code: serverSettings.group_code || '',
@@ -94,11 +91,11 @@ export const useSettingsData = () => {
         payment_address: serverSettings.payment_address || '',
         ecomkassa_login: serverSettings.ecomkassa_login || '',
         ecomkassa_password: serverSettings.ecomkassa_password || '',
-        active_ai_provider: aiSettings.active_ai_provider || '',
-        gigachat_auth_key: aiSettings.gigachat_auth_key || '',
-        yandexgpt_api_key: aiSettings.yandexgpt_api_key || '',
-        yandexgpt_folder_id: aiSettings.yandexgpt_folder_id || '',
-        gptunnel_api_key: aiSettings.gptunnel_api_key || '',
+        active_ai_provider: serverSettings.active_ai_provider || '',
+        gigachat_auth_key: serverSettings.gigachat_auth_key || '',
+        yandexgpt_api_key: serverSettings.yandexgpt_api_key || '',
+        yandexgpt_folder_id: serverSettings.yandexgpt_folder_id || '',
+        gptunnel_api_key: serverSettings.gptunnel_api_key || '',
         available_shops: []
       });
     } catch (error) {
@@ -214,7 +211,12 @@ export const useSettingsData = () => {
             company_email: settingsToSave.company_email,
             payment_address: settingsToSave.payment_address,
             ecomkassa_login: settingsToSave.ecomkassa_login,
-            ecomkassa_password: settingsToSave.ecomkassa_password
+            ecomkassa_password: settingsToSave.ecomkassa_password,
+            active_ai_provider: settingsToSave.active_ai_provider,
+            gigachat_auth_key: settingsToSave.gigachat_auth_key,
+            yandexgpt_api_key: settingsToSave.yandexgpt_api_key,
+            yandexgpt_folder_id: settingsToSave.yandexgpt_folder_id,
+            gptunnel_api_key: settingsToSave.gptunnel_api_key
           }
         })
       });
@@ -228,7 +230,7 @@ export const useSettingsData = () => {
     }
   };
 
-  const handleConnect = (providerId: string, apiKey: string, folderId?: string) => {
+  const handleConnect = async (providerId: string, apiKey: string, folderId?: string) => {
     const keyMap: Record<string, string> = {
       gigachat: 'gigachat_auth_key',
       yandexgpt: 'yandexgpt_api_key',
@@ -251,21 +253,13 @@ export const useSettingsData = () => {
 
     setSettings(updatedSettings);
     
-    const aiSettings = {
-      active_ai_provider: providerId,
-      gigachat_auth_key: updatedSettings.gigachat_auth_key,
-      yandexgpt_api_key: updatedSettings.yandexgpt_api_key,
-      yandexgpt_folder_id: updatedSettings.yandexgpt_folder_id,
-      gptunnel_api_key: updatedSettings.gptunnel_api_key
-    };
-    
-    localStorage.setItem('ai_provider_settings', JSON.stringify(aiSettings));
+    await saveSettingsToServer(updatedSettings);
     
     const provider = aiProviders.find(p => p.id === providerId);
     toast.success(`Подключен провайдер: ${provider?.name}`);
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
     const currentProvider = settings.active_ai_provider;
     
     const keyMap: Record<string, string> = {
@@ -283,21 +277,13 @@ export const useSettingsData = () => {
       active_ai_provider: ''
     };
 
+    setSettings(updatedSettings);
+    await saveSettingsToServer(updatedSettings);
+
     if (currentProvider === 'yandexgpt') {
       updatedSettings.yandexgpt_folder_id = '';
     }
 
-    setSettings(updatedSettings);
-    
-    const aiSettings = {
-      active_ai_provider: '',
-      gigachat_auth_key: '',
-      yandexgpt_api_key: '',
-      yandexgpt_folder_id: '',
-      gptunnel_api_key: ''
-    };
-    
-    localStorage.setItem('ai_provider_settings', JSON.stringify(aiSettings));
     toast.info('AI провайдер отключен');
   };
 
