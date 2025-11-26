@@ -48,11 +48,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         if method == 'GET':
             cur.execute(
-                "SELECT setting_value FROM ai_settings WHERE setting_key = 'telegram_bot_token'"
+                "SELECT setting_value FROM bot_settings WHERE setting_key = 'telegram_bot_token'"
             )
             result = cur.fetchone()
             
-            token = result[0] if result else '8367558133:AAG8btCuHLitqaRlgS_HwUsgSIRO8bZJCr0'
+            token = result[0] if result else ''
             
             return {
                 'statusCode': 200,
@@ -77,7 +77,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             cur.execute(
                 """
-                INSERT INTO ai_settings (setting_key, setting_value)
+                INSERT INTO bot_settings (setting_key, setting_value)
                 VALUES ('telegram_bot_token', %s)
                 ON CONFLICT (setting_key) 
                 DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = CURRENT_TIMESTAMP
