@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { IntegrationSettings, AIProvider, Shop } from './types';
-import { getUserId } from '@/utils/userId';
+import { getUserId, setEcomkassaLogin } from '@/utils/userId';
 
 export const useSettingsData = () => {
   const [settings, setSettings] = useState<IntegrationSettings>({
@@ -152,6 +152,8 @@ export const useSettingsData = () => {
         storeName: shop.storeName || 'Без названия',
         storeAddress: shop.storeAddress || ''
       }));
+
+      setEcomkassaLogin(settings.ecomkassa_login);
 
       const updatedSettings = {
         ...settings,
