@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Save, X } from 'lucide-react';
 import { EcomkassaSettingsSection } from '@/components/settings/EcomkassaSettingsSection';
 import { useSettingsData } from '@/components/settings/useSettingsData';
+import { TelegramLinkSection } from '@/components/settings/TelegramLinkSection';
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -51,6 +52,8 @@ const Settings = () => {
             onLoadShops={loadShops}
             onShopSelect={handleShopSelect}
           />
+
+          <TelegramLinkSection />
 
           <Button onClick={handleSave} className="w-full">
             <Save className="mr-2 h-4 w-4" />

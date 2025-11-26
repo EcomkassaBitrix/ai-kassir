@@ -2,6 +2,7 @@ import json
 import os
 import urllib.request
 import urllib.parse
+import psycopg2
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -33,7 +34,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({'error': 'Method not allowed'})
         }
     
-    bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+    bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', '8367558133:AAG8btCuHLitqaRlgS_HwUsgSIRO8bZJCr0')
     if not bot_token:
         return {
             'statusCode': 500,
@@ -56,6 +57,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         text = message.get('text', '')
         
         if text.startswith('/start'):
+            link_code = text.replace('/start', '').strip()
+            
+            if link_code and link_code.startswith('LINK-'):
+                result = process_link_code(link_code, chat_id)
+                send_telegram_message(bot_token, chat_id, result['message'])
+                return create_response({'ok': True})
+            
             response_text = (
                 "👋 Привет! Я помогу создавать чеки для ЕкомКасса.\n\n"
                 "Просто опиши покупку, например:\n"
@@ -82,7 +90,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             send_telegram_message(bot_token, chat_id, response_text)
             return create_response({'ok': True})
         
-        user_id = f"telegram_{chat_id}"
+        user_id = get_user_id_for_telegram(chat_id)
         
         receipt_result = process_receipt_ai(text, user_id)
         
@@ -178,3 +186,75 @@ def create_response(data: Dict[str, Any]) -> Dict[str, Any]:
         'isBase64Encoded': False,
         'body': json.dumps(data)
     }
+
+
+def process_link_code(link_code: str, telegram_chat_id: int) -> Dict[str, str]:
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return {'message': '❌ Ошибка сервера. Попробуйте позже.'}
+    
+    conn = psycopg2.connect(dsn)
+    cur = conn.cursor()
+    
+    try:
+        cur.execute(
+            "SELECT user_id, expires_at, is_active FROM telegram_links WHERE link_code = %s",
+            (link_code,)
+        )
+        result = cur.fetchone()
+        
+        if not result:
+            return {'message': '❌ Неверный код привязки. Проверьте код в приложении.'}
+        
+        user_id, expires_at, is_active = result
+        
+        if not is_active:
+            return {'message': '❌ Этот код уже использован.'}
+        
+        if datetime.now() > expires_at:
+            return {'message': '❌ Код истёк. Получите новый в приложении.'}
+        
+        cur.execute(
+            "UPDATE telegram_links SET telegram_chat_id = %s, linked_at = %s, is_active = FALSE WHERE link_code = %s",
+            (telegram_chat_id, datetime.now(), link_code)
+        )
+        conn.commit()
+        
+        return {
+            'message': (
+                '✅ Telegram успешно привязан!\n\n'
+                'Теперь можешь создавать чеки прямо в боте:\n'
+                '• Напиши "Кофе 200р"\n'
+                '• Или "Продал телефон 15000"\n\n'
+                'Все чеки будут автоматически отправляться в ЕкомКасса! 🎉'
+            )
+        }
+        
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_user_id_for_telegram(telegram_chat_id: int) -> str:
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return f"telegram_{telegram_chat_id}"
+    
+    conn = psycopg2.connect(dsn)
+    cur = conn.cursor()
+    
+    try:
+        cur.execute(
+            "SELECT user_id FROM telegram_links WHERE telegram_chat_id = %s AND is_active = FALSE ORDER BY linked_at DESC LIMIT 1",
+            (telegram_chat_id,)
+        )
+        result = cur.fetchone()
+        
+        if result:
+            return result[0]
+        
+        return f"telegram_{telegram_chat_id}"
+        
+    finally:
+        cur.close()
+        conn.close()

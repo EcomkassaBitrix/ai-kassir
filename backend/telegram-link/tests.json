@@ -1,0 +1,25 @@
+{
+  "tests": [
+    {
+      "name": "Test OPTIONS for CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Test generate link code",
+      "method": "POST",
+      "path": "/",
+      "headers": {
+        "X-User-Id": "test_user_123"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "link_code": "string",
+        "bot_url": "string",
+        "expires_at": "string"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
