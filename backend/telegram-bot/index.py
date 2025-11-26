@@ -1004,6 +1004,32 @@ def find_editing_preview_for_chat(chat_id: int) -> Optional[str]:
         conn = psycopg2.connect(dsn)
         cur = conn.cursor()
         
+        # Ensure telegram_edit_states table exists
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS telegram_edit_states ("
+            "preview_id TEXT PRIMARY KEY, "
+            "field TEXT, "
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        
+        # Ensure telegram_previews has chat_id column
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS telegram_previews ("
+            "preview_id TEXT PRIMARY KEY, "
+            "chat_id BIGINT, "
+            "user_message TEXT, "
+            "user_id TEXT, "
+            "receipt_data JSONB, "
+            "payment_type TEXT, "
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        
+        cur.execute(
+            "ALTER TABLE telegram_previews ADD COLUMN IF NOT EXISTS chat_id BIGINT"
+        )
+        
         # Find most recent preview for this chat that has editing state
         cur.execute(
             "SELECT p.preview_id FROM telegram_previews p "
