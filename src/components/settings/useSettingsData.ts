@@ -153,6 +153,31 @@ export const useSettingsData = () => {
         storeAddress: shop.storeAddress || ''
       }));
 
+      const oldUserId = localStorage.getItem('poehali_user_id') || '';
+      const isOldAnonymousUser = oldUserId && !oldUserId.startsWith('ecom_');
+      
+      if (isOldAnonymousUser) {
+        try {
+          const migrateResponse = await fetch('https://functions.poehali.dev/8effbced-c4d0-4505-816b-605f1eb102c9', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              old_user_id: oldUserId,
+              ecomkassa_login: settings.ecomkassa_login
+            })
+          });
+          
+          if (migrateResponse.ok) {
+            const migrateData = await migrateResponse.json();
+            console.log('[MIGRATION] User migrated:', migrateData);
+          }
+        } catch (error) {
+          console.error('[MIGRATION] Failed to migrate user:', error);
+        }
+      }
+      
       setEcomkassaLogin(settings.ecomkassa_login);
 
       const updatedSettings = {
