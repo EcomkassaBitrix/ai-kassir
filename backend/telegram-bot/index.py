@@ -647,6 +647,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
     
     elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_payment_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
         # Extract field type and preview_id
+        print(f"[DEBUG] Edit field button clicked! callback_data: {callback_data}")
         if callback_data.startswith('edit_item_'):
             field = 'item'
             preview_id = callback_data.replace('edit_item_', '')
@@ -684,7 +685,9 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             prompt_text = "📱 <b>Изменить телефон клиента</b>\n\nОтправь новый телефон текстом.\n\nНапример: <code>+79991234567</code>"
         
         # Save editing state
+        print(f"[DEBUG] About to call save_editing_state with preview_id='{preview_id}', field='{field}'")
         save_editing_state(preview_id, field)
+        print(f"[DEBUG] save_editing_state completed, now sending prompt message")
         
         edit_message(bot_token, chat_id, message_id, prompt_text)
     
