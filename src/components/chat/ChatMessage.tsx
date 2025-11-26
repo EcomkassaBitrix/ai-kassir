@@ -77,24 +77,25 @@ export const ChatMessage = ({
   };
 
   return (
-    <div
-      className={`flex gap-3 animate-fade-in ${
-        message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
-      }`}
-    >
-      <Avatar
-        className={`w-10 h-10 flex items-center justify-center ${
-          message.type === 'agent' || message.type === 'preview'
-            ? 'bg-gradient-to-br from-primary to-secondary'
-            : 'bg-muted'
+    <>
+      <div
+        className={`flex gap-3 animate-fade-in ${
+          message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
         }`}
       >
-        {message.type === 'agent' || message.type === 'preview' ? (
-          <Icon name="Bot" size={20} className="text-white" />
-        ) : (
-          <Icon name="User" size={20} className="text-foreground" />
-        )}
-      </Avatar>
+        <Avatar
+          className={`w-10 h-10 flex items-center justify-center ${
+            message.type === 'agent' || message.type === 'preview'
+              ? 'bg-gradient-to-br from-primary to-secondary'
+              : 'bg-muted'
+          }`}
+        >
+          {message.type === 'agent' || message.type === 'preview' ? (
+            <Icon name="Bot" size={20} className="text-white" />
+          ) : (
+            <Icon name="User" size={20} className="text-foreground" />
+          )}
+        </Avatar>
 
       <div
         className={`flex-1 max-w-[80%] ${
@@ -114,53 +115,6 @@ export const ChatMessage = ({
             }`}
           >
           <p className="text-sm leading-relaxed">{message.content}</p>
-          {message.previewData && editedData && (
-            <Dialog open={true} onOpenChange={(open) => !open && handleCancelReceipt()}>
-              <DialogContent className="max-w-lg max-h-[90vh] flex flex-col p-0 gap-0">
-                <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
-                  <DialogTitle>Предпросмотр чека</DialogTitle>
-                </DialogHeader>
-                <div className="flex-1 overflow-y-auto px-6 py-4">
-                  <ReceiptPreview
-                    editedData={editedData}
-                    editMode={editMode}
-                    isProcessing={isProcessing}
-                    updateEditedField={updateEditedField}
-                    handleEditToggle={handleEditToggle}
-                    handleConfirmReceipt={handleConfirmReceipt}
-                    handleCancelReceipt={handleCancelReceipt}
-                  />
-                </div>
-                <DialogFooter className="px-6 py-4 border-t shrink-0 flex-row gap-2">
-                  <Button 
-                    onClick={handleEditToggle}
-                    variant="outline"
-                    size="sm"
-                    disabled={isProcessing}
-                  >
-                    <Icon name={editMode ? "Save" : "Edit"} size={16} className="mr-2" />
-                    {editMode ? 'Готово' : 'Редактировать'}
-                  </Button>
-                  <Button 
-                    onClick={handleConfirmReceipt} 
-                    disabled={isProcessing}
-                    className="flex-1"
-                  >
-                    <Icon name={editedData.bulk_count && editedData.original_uuid ? "Copy" : "Check"} size={16} className="mr-2" />
-                    {editedData.bulk_count && editedData.original_uuid ? `Создать ${editedData.bulk_count} копий` : 'Отправить чек'}
-                  </Button>
-                  <Button 
-                    onClick={handleCancelReceipt}
-                    variant="ghost"
-                    size="sm"
-                    disabled={isProcessing}
-                  >
-                    <Icon name="X" size={16} />
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
           {message.hasError && message.errorMessage && (
             <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
               <div className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400">
@@ -254,5 +208,54 @@ export const ChatMessage = ({
         </div>
       </div>
     </div>
+
+    {message.previewData && editedData && (
+      <Dialog open={true} onOpenChange={(open) => !open && handleCancelReceipt()}>
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
+            <DialogTitle>Предпросмотр чека</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <ReceiptPreview
+              editedData={editedData}
+              editMode={editMode}
+              isProcessing={isProcessing}
+              updateEditedField={updateEditedField}
+              handleEditToggle={handleEditToggle}
+              handleConfirmReceipt={handleConfirmReceipt}
+              handleCancelReceipt={handleCancelReceipt}
+            />
+          </div>
+          <DialogFooter className="px-6 py-4 border-t shrink-0 flex-row gap-2">
+            <Button 
+              onClick={handleEditToggle}
+              variant="outline"
+              size="sm"
+              disabled={isProcessing}
+            >
+              <Icon name={editMode ? "Save" : "Edit"} size={16} className="mr-2" />
+              {editMode ? 'Готово' : 'Редактировать'}
+            </Button>
+            <Button 
+              onClick={handleConfirmReceipt} 
+              disabled={isProcessing}
+              className="flex-1"
+            >
+              <Icon name={editedData.bulk_count && editedData.original_uuid ? "Copy" : "Check"} size={16} className="mr-2" />
+              {editedData.bulk_count && editedData.original_uuid ? `Создать ${editedData.bulk_count} копий` : 'Отправить чек'}
+            </Button>
+            <Button 
+              onClick={handleCancelReceipt}
+              variant="ghost"
+              size="sm"
+              disabled={isProcessing}
+            >
+              <Icon name="X" size={16} />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
   );
 };
