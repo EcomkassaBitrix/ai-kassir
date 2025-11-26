@@ -915,7 +915,10 @@ def edit_message_with_buttons(bot_token: str, chat_id: int, message_id: int, tex
 def save_editing_state(preview_id: str, field: str) -> None:
     dsn = os.environ.get('DATABASE_URL')
     if not dsn:
+        print(f"[ERROR] No DATABASE_URL, cannot save editing state")
         return
+    
+    print(f"[DEBUG] save_editing_state called with preview_id='{preview_id}', field='{field}'")
     
     try:
         conn = psycopg2.connect(dsn)
@@ -929,6 +932,8 @@ def save_editing_state(preview_id: str, field: str) -> None:
             ")"
         )
         
+        print(f"[DEBUG] Inserting into telegram_edit_states: preview_id='{preview_id}', field='{field}'")
+        
         cur.execute(
             "INSERT INTO telegram_edit_states (preview_id, field) "
             "VALUES (%s, %s) "
@@ -936,7 +941,11 @@ def save_editing_state(preview_id: str, field: str) -> None:
             (preview_id, field)
         )
         
+        print(f"[DEBUG] INSERT successful, affected rows: {cur.rowcount}")
+        
         conn.commit()
+        print(f"[DEBUG] Committed successfully")
+        
         cur.close()
         conn.close()
     except Exception as e:
