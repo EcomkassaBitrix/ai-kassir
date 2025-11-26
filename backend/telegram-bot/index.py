@@ -792,6 +792,23 @@ def get_preview_data(preview_id: str) -> Optional[Dict[str, Any]]:
         conn = psycopg2.connect(dsn)
         cur = conn.cursor()
         
+        # Ensure telegram_previews table exists with all columns
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS telegram_previews ("
+            "preview_id TEXT PRIMARY KEY, "
+            "chat_id BIGINT, "
+            "user_message TEXT, "
+            "user_id TEXT, "
+            "receipt_data JSONB, "
+            "payment_type TEXT, "
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        
+        cur.execute(
+            "ALTER TABLE telegram_previews ADD COLUMN IF NOT EXISTS receipt_data JSONB"
+        )
+        
         cur.execute(
             "SELECT user_message, user_id, receipt_data FROM telegram_previews WHERE preview_id = %s",
             (preview_id,)
@@ -1061,6 +1078,23 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
     try:
         conn = psycopg2.connect(dsn)
         cur = conn.cursor()
+        
+        # Ensure telegram_previews table exists with all columns
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS telegram_previews ("
+            "preview_id TEXT PRIMARY KEY, "
+            "chat_id BIGINT, "
+            "user_message TEXT, "
+            "user_id TEXT, "
+            "receipt_data JSONB, "
+            "payment_type TEXT, "
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        
+        cur.execute(
+            "ALTER TABLE telegram_previews ADD COLUMN IF NOT EXISTS receipt_data JSONB"
+        )
         
         # Get current receipt_data
         cur.execute(
