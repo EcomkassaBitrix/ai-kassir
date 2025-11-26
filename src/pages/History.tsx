@@ -36,7 +36,12 @@ const History = ({ setRepeatCommand }: HistoryProps) => {
 
   const fetchReceipts = async () => {
     try {
-      const response = await fetch('https://functions.poehali.dev/1e30d22a-a25c-46a5-b05a-ccc647ed9bb6');
+      const userId = localStorage.getItem('poehali_user_id') || '';
+      const response = await fetch('https://functions.poehali.dev/1e30d22a-a25c-46a5-b05a-ccc647ed9bb6', {
+        headers: {
+          'X-User-Id': userId
+        }
+      });
       const data = await response.json();
 
       if (data.success) {

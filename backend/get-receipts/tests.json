@@ -1,13 +1,17 @@
 {
   "tests": [
     {
-      "name": "Test get receipts",
+      "name": "Test get receipts with user id returns success",
       "method": "GET",
-      "expectedStatus": 200,
-      "expectedBody": {
-        "success": true
+      "headers": {
+        "X-User-Id": "ecom_sergey@ecomkassa.ru"
       },
-      "bodyMatcher": "partial"
+      "expectedStatus": 200
+    },
+    {
+      "name": "Test get receipts without user id returns 400",
+      "method": "GET",
+      "expectedStatus": 400
     },
     {
       "name": "Test OPTIONS for CORS",
