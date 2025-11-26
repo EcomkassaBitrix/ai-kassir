@@ -122,6 +122,35 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         user_id = get_user_id_for_telegram(chat_id)
         print(f"[DEBUG] chat_id={chat_id}, resolved user_id='{user_id}'")
         
+        # Check if user is editing a field
+        editing_preview_id = find_editing_preview_for_chat(chat_id)
+        if editing_preview_id:
+            editing_field = get_editing_state(editing_preview_id)
+            print(f"[DEBUG] User is editing field: {editing_field}")
+            
+            if editing_field:
+                # Process the new value
+                preview_data = get_preview_data(editing_preview_id)
+                if preview_data:
+                    # Update preview with new value
+                    update_success = update_preview_field(editing_preview_id, editing_field, text, user_id)
+                    
+                    if update_success:
+                        delete_editing_state(editing_preview_id)
+                        send_telegram_message(bot_token, chat_id, "✅ Изменения сохранены!\n\nВозвращаю к чеку...")
+                        
+                        # Show updated preview
+                        import time
+                        time.sleep(1)
+                        
+                        # Regenerate and show preview
+                        show_updated_preview(bot_token, chat_id, editing_preview_id, user_id)
+                        return create_response({'ok': True})
+                    else:
+                        delete_editing_state(editing_preview_id)
+                        send_telegram_message(bot_token, chat_id, "❌ Ошибка при сохранении. Попробуй снова.")
+                        return create_response({'ok': True})
+        
         # Get preview of the receipt
         preview_result = process_receipt_ai(text, user_id, preview_only=True)
         print(f"[DEBUG] preview_result: {preview_result.get('success')}, preview: {preview_result.get('preview')}")
@@ -222,6 +251,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 response_text,
                 [
                     [{"text": "✅ Отправить чек", "callback_data": f"confirm_{preview_id}"}],
+                    [{"text": "✏️ Изменить", "callback_data": f"edit_{preview_id}"}],
                     [{"text": "❌ Отменить", "callback_data": f"cancel_{preview_id}"}]
                 ]
             )
@@ -481,6 +511,190 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         edit_message(bot_token, chat_id, message_id, "❌ Создание чека отменено")
         delete_preview_data(preview_id)
     
+    elif callback_data.startswith('edit_'):
+        preview_id = callback_data.replace('edit_', '')
+        preview_data = get_preview_data(preview_id)
+        
+        if not preview_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
+        
+        # Show edit menu with options
+        edit_text = "✏️ <b>Что изменить?</b>\n\nВыбери поле для редактирования:"
+        
+        edit_buttons = [
+            [{"text": "📝 Товар/Услугу", "callback_data": f"edit_item_{preview_id}"}],
+            [{"text": "💰 Цену", "callback_data": f"edit_price_{preview_id}"}],
+            [{"text": "📊 Количество", "callback_data": f"edit_quantity_{preview_id}"}],
+            [{"text": "💳 Способ оплаты", "callback_data": f"edit_payment_{preview_id}"}],
+            [{"text": "📧 Email клиента", "callback_data": f"edit_email_{preview_id}"}],
+            [{"text": "📱 Телефон клиента", "callback_data": f"edit_phone_{preview_id}"}],
+            [{"text": "« Назад к чеку", "callback_data": f"back_{preview_id}"}]
+        ]
+        
+        edit_message_with_buttons(bot_token, chat_id, message_id, edit_text, edit_buttons)
+    
+    elif callback_data.startswith('back_'):
+        preview_id = callback_data.replace('back_', '')
+        preview_data = get_preview_data(preview_id)
+        
+        if not preview_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
+        
+        user_message = preview_data['user_message']
+        user_id = preview_data['user_id']
+        
+        # Regenerate preview
+        preview_result = process_receipt_ai(user_message, user_id, preview_only=True)
+        
+        if preview_result.get('preview'):
+            # Rebuild preview text (same code as before)
+            receipt_data = preview_result.get('receipt', {})
+            items = receipt_data.get('items', [])
+            total = receipt_data.get('total', 0)
+            payments = receipt_data.get('payments', [])
+            client_data = receipt_data.get('client', {})
+            operation_type = preview_result.get('operation_type', 'sell')
+            
+            operation_names = {
+                'sell': '🛒 Приход (продажа)',
+                'refund': '↩️ Возврат прихода',
+                'sell_correction': '📝 Коррекция прихода',
+                'refund_correction': '📝 Коррекция расхода'
+            }
+            
+            response_text = "📋 <b>Проверь чек перед отправкой:</b>\n\n"
+            response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
+            
+            response_text += "<b>Товары/Услуги:</b>\n"
+            for idx, item in enumerate(items, 1):
+                name = item.get('name', 'Товар')
+                price = item.get('price', 0)
+                qty = item.get('quantity', 1)
+                measure = item.get('measure', 'шт')
+                vat = item.get('vat', 'none')
+                payment_method = item.get('payment_method', 'full_payment')
+                payment_object = item.get('payment_object', 'commodity')
+                
+                vat_names = {'none': 'Без НДС', 'vat0': 'НДС 0%', 'vat10': 'НДС 10%', 'vat20': 'НДС 20%'}
+                method_names = {
+                    'full_payment': 'Полный расчёт',
+                    'prepayment': 'Предоплата',
+                    'advance': 'Аванс',
+                    'full_prepayment': 'Предоплата 100%',
+                    'partial_payment': 'Частичный расчёт',
+                    'credit': 'Кредит',
+                    'credit_payment': 'Оплата кредита'
+                }
+                object_names = {'commodity': 'Товар', 'service': 'Услуга', 'excise': 'Подакцизный товар', 'job': 'Работа'}
+                
+                response_text += f"\n<b>{idx}. {name}</b>\n"
+                response_text += f"   Цена: {price}₽ × {qty} {measure}\n"
+                response_text += f"   НДС: {vat_names.get(vat, vat)}\n"
+                response_text += f"   Предмет: {object_names.get(payment_object, payment_object)}\n"
+                response_text += f"   Способ: {method_names.get(payment_method, payment_method)}\n"
+            
+            response_text += f"\n<b>💰 Итого:</b> {total}₽\n\n"
+            
+            if payments and len(payments) > 1:
+                response_text += "<b>Способы оплаты:</b>\n"
+                payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
+                for payment in payments:
+                    ptype = payment.get('type', '1')
+                    psum = payment.get('sum', 0)
+                    response_text += f"  • {payment_names.get(str(ptype), 'Безнал')}: {psum}₽\n"
+            else:
+                payment_type = payments[0].get('type', '1') if payments else '1'
+                payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
+                payment_str = payment_names.get(str(payment_type), "💳 Безналичный")
+                response_text += f"<b>Способ оплаты:</b> {payment_str}\n"
+            
+            response_text += f"\n<b>📧 Email клиента:</b> {client_data.get('email', 'Не указан')}\n"
+            
+            client_phone = client_data.get('phone')
+            if client_phone:
+                response_text += f"<b>📱 Телефон:</b> {client_phone}\n"
+            
+            edit_message_with_buttons(
+                bot_token,
+                chat_id,
+                message_id,
+                response_text,
+                [
+                    [{"text": "✅ Отправить чек", "callback_data": f"confirm_{preview_id}"}],
+                    [{"text": "✏️ Изменить", "callback_data": f"edit_{preview_id}"}],
+                    [{"text": "❌ Отменить", "callback_data": f"cancel_{preview_id}"}]
+                ]
+            )
+    
+    elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_payment_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
+        # Extract field type and preview_id
+        if callback_data.startswith('edit_item_'):
+            field = 'item'
+            preview_id = callback_data.replace('edit_item_', '')
+            prompt_text = "📝 <b>Изменить товар/услугу</b>\n\nОтправь новое название товара или услуги текстом.\n\nНапример: <code>кофе латте</code>"
+        elif callback_data.startswith('edit_price_'):
+            field = 'price'
+            preview_id = callback_data.replace('edit_price_', '')
+            prompt_text = "💰 <b>Изменить цену</b>\n\nОтправь новую цену числом.\n\nНапример: <code>350</code>"
+        elif callback_data.startswith('edit_quantity_'):
+            field = 'quantity'
+            preview_id = callback_data.replace('edit_quantity_', '')
+            prompt_text = "📊 <b>Изменить количество</b>\n\nОтправь новое количество числом.\n\nНапример: <code>2</code>"
+        elif callback_data.startswith('edit_payment_'):
+            field = 'payment'
+            preview_id = callback_data.replace('edit_payment_', '')
+            prompt_text = "💳 <b>Выбери способ оплаты:</b>"
+            
+            payment_buttons = [
+                [{"text": "💵 Наличные", "callback_data": f"set_payment_0_{preview_id}"}],
+                [{"text": "💳 Безналичный", "callback_data": f"set_payment_1_{preview_id}"}],
+                [{"text": "📝 Предоплата", "callback_data": f"set_payment_2_{preview_id}"}],
+                [{"text": "🏦 Кредит", "callback_data": f"set_payment_3_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+            ]
+            
+            edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, payment_buttons)
+            return create_response({'ok': True})
+        elif callback_data.startswith('edit_email_'):
+            field = 'email'
+            preview_id = callback_data.replace('edit_email_', '')
+            prompt_text = "📧 <b>Изменить email клиента</b>\n\nОтправь новый email текстом.\n\nНапример: <code>client@mail.ru</code>"
+        elif callback_data.startswith('edit_phone_'):
+            field = 'phone'
+            preview_id = callback_data.replace('edit_phone_', '')
+            prompt_text = "📱 <b>Изменить телефон клиента</b>\n\nОтправь новый телефон текстом.\n\nНапример: <code>+79991234567</code>"
+        
+        # Save editing state
+        save_editing_state(preview_id, field)
+        
+        edit_message(bot_token, chat_id, message_id, prompt_text)
+    
+    elif callback_data.startswith('set_payment_'):
+        # Extract payment type and preview_id
+        parts = callback_data.replace('set_payment_', '').split('_')
+        payment_type = parts[0]
+        preview_id = '_'.join(parts[1:])
+        
+        preview_data = get_preview_data(preview_id)
+        if not preview_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
+        
+        # Update payment type in preview data
+        update_preview_payment(preview_id, payment_type)
+        
+        edit_message(bot_token, chat_id, message_id, "✅ Способ оплаты изменен!\n\nВозвращаю к чеку...")
+        
+        # Wait a bit and show updated preview
+        import time
+        time.sleep(1)
+        
+        # Trigger back button logic
+        callback_query['data'] = f"back_{preview_id}"
+        return handle_callback_query(callback_query, bot_token)
+    
     return create_response({'ok': True})
 
 
@@ -625,6 +839,341 @@ def get_user_receipts_history(user_id: str, limit: int = 10) -> list:
     except Exception as e:
         print(f"[ERROR] Failed to load history: {e}")
         return []
+
+
+def edit_message_with_buttons(bot_token: str, chat_id: int, message_id: int, text: str, buttons: list) -> None:
+    url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
+    data = {
+        'chat_id': chat_id,
+        'message_id': message_id,
+        'text': text,
+        'parse_mode': 'HTML',
+        'reply_markup': {
+            'inline_keyboard': buttons
+        }
+    }
+    
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(data).encode('utf-8'),
+        headers={'Content-Type': 'application/json'}
+    )
+    
+    try:
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        print(f"[ERROR] Failed to edit message with buttons: {e}")
+
+
+def save_editing_state(preview_id: str, field: str) -> None:
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS telegram_edit_states ("
+            "preview_id TEXT PRIMARY KEY, "
+            "field TEXT, "
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        
+        cur.execute(
+            "INSERT INTO telegram_edit_states (preview_id, field) "
+            "VALUES (%s, %s) "
+            "ON CONFLICT (preview_id) DO UPDATE SET field = EXCLUDED.field, created_at = CURRENT_TIMESTAMP",
+            (preview_id, field)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[ERROR] Failed to save editing state: {e}")
+
+
+def get_editing_state(preview_id: str) -> Optional[str]:
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return None
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT field FROM telegram_edit_states WHERE preview_id = %s",
+            (preview_id,)
+        )
+        
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if result:
+            return result[0]
+        
+        return None
+    except Exception as e:
+        print(f"[ERROR] Failed to get editing state: {e}")
+        return None
+
+
+def delete_editing_state(preview_id: str) -> None:
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute("DELETE FROM telegram_edit_states WHERE preview_id = %s", (preview_id,))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[ERROR] Failed to delete editing state: {e}")
+
+
+def update_preview_payment(preview_id: str, payment_type: str) -> None:
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        # Add payment_type column if not exists
+        cur.execute(
+            "ALTER TABLE telegram_previews ADD COLUMN IF NOT EXISTS payment_type TEXT"
+        )
+        
+        cur.execute(
+            "UPDATE telegram_previews SET payment_type = %s WHERE preview_id = %s",
+            (payment_type, preview_id)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[ERROR] Failed to update payment type: {e}")
+
+
+def find_editing_preview_for_chat(chat_id: int) -> Optional[str]:
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return None
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        # Find most recent preview for this chat that has editing state
+        cur.execute(
+            "SELECT p.preview_id FROM telegram_previews p "
+            "JOIN telegram_edit_states e ON p.preview_id = e.preview_id "
+            "WHERE p.chat_id = %s "
+            "ORDER BY e.created_at DESC LIMIT 1",
+            (chat_id,)
+        )
+        
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if result:
+            return result[0]
+        
+        return None
+    except Exception as e:
+        print(f"[ERROR] Failed to find editing preview: {e}")
+        return None
+
+
+def update_preview_field(preview_id: str, field: str, new_value: str, user_id: str) -> bool:
+    """Update a specific field in preview data by regenerating with AI"""
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return False
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        # Get original message
+        cur.execute(
+            "SELECT user_message FROM telegram_previews WHERE preview_id = %s",
+            (preview_id,)
+        )
+        result = cur.fetchone()
+        
+        if not result:
+            return False
+        
+        original_message = result[0]
+        
+        # Build new message based on field
+        if field == 'item':
+            new_message = f"{new_value} (оставь цену как была)"
+        elif field == 'price':
+            new_message = f"{original_message.split()[0]} {new_value}₽"
+        elif field == 'quantity':
+            new_message = f"{new_value} шт {original_message}"
+        elif field == 'email':
+            new_message = f"{original_message} {new_value}"
+        elif field == 'phone':
+            new_message = f"{original_message} тел {new_value}"
+        else:
+            new_message = original_message
+        
+        # Update user_message in preview
+        cur.execute(
+            "UPDATE telegram_previews SET user_message = %s WHERE preview_id = %s",
+            (new_message, preview_id)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to update preview field: {e}")
+        return False
+
+
+def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id: str) -> None:
+    """Show updated preview after editing"""
+    preview_data = get_preview_data(preview_id)
+    if not preview_data:
+        send_telegram_message(bot_token, chat_id, "❌ Ошибка: данные не найдены")
+        return
+    
+    user_message = preview_data['user_message']
+    
+    # Regenerate preview with updated message
+    preview_result = process_receipt_ai(user_message, user_id, preview_only=True)
+    
+    if not preview_result.get('preview'):
+        send_telegram_message(bot_token, chat_id, "❌ Ошибка при обновлении предпросмотра")
+        return
+    
+    receipt_data = preview_result.get('receipt', {})
+    items = receipt_data.get('items', [])
+    total = receipt_data.get('total', 0)
+    payments = receipt_data.get('payments', [])
+    client_data = receipt_data.get('client', {})
+    operation_type = preview_result.get('operation_type', 'sell')
+    
+    # Get saved payment type if exists
+    payment_type_override = get_preview_payment_type(preview_id)
+    if payment_type_override:
+        payments = [{'type': payment_type_override, 'sum': total}]
+    
+    operation_names = {
+        'sell': '🛒 Приход (продажа)',
+        'refund': '↩️ Возврат прихода',
+        'sell_correction': '📝 Коррекция прихода',
+        'refund_correction': '📝 Коррекция расхода'
+    }
+    
+    response_text = "📋 <b>Проверь чек перед отправкой:</b>\n\n"
+    response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
+    
+    response_text += "<b>Товары/Услуги:</b>\n"
+    for idx, item in enumerate(items, 1):
+        name = item.get('name', 'Товар')
+        price = item.get('price', 0)
+        qty = item.get('quantity', 1)
+        measure = item.get('measure', 'шт')
+        vat = item.get('vat', 'none')
+        payment_method = item.get('payment_method', 'full_payment')
+        payment_object = item.get('payment_object', 'commodity')
+        
+        vat_names = {'none': 'Без НДС', 'vat0': 'НДС 0%', 'vat10': 'НДС 10%', 'vat20': 'НДС 20%'}
+        method_names = {
+            'full_payment': 'Полный расчёт',
+            'prepayment': 'Предоплата',
+            'advance': 'Аванс',
+            'full_prepayment': 'Предоплата 100%',
+            'partial_payment': 'Частичный расчёт',
+            'credit': 'Кредит',
+            'credit_payment': 'Оплата кредита'
+        }
+        object_names = {'commodity': 'Товар', 'service': 'Услуга', 'excise': 'Подакцизный товар', 'job': 'Работа'}
+        
+        response_text += f"\n<b>{idx}. {name}</b>\n"
+        response_text += f"   Цена: {price}₽ × {qty} {measure}\n"
+        response_text += f"   НДС: {vat_names.get(vat, vat)}\n"
+        response_text += f"   Предмет: {object_names.get(payment_object, payment_object)}\n"
+        response_text += f"   Способ: {method_names.get(payment_method, payment_method)}\n"
+    
+    response_text += f"\n<b>💰 Итого:</b> {total}₽\n\n"
+    
+    if payments and len(payments) > 1:
+        response_text += "<b>Способы оплаты:</b>\n"
+        payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
+        for payment in payments:
+            ptype = payment.get('type', '1')
+            psum = payment.get('sum', 0)
+            response_text += f"  • {payment_names.get(str(ptype), 'Безнал')}: {psum}₽\n"
+    else:
+        payment_type = payments[0].get('type', '1') if payments else '1'
+        payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
+        payment_str = payment_names.get(str(payment_type), "💳 Безналичный")
+        response_text += f"<b>Способ оплаты:</b> {payment_str}\n"
+    
+    response_text += f"\n<b>📧 Email клиента:</b> {client_data.get('email', 'Не указан')}\n"
+    
+    client_phone = client_data.get('phone')
+    if client_phone:
+        response_text += f"<b>📱 Телефон:</b> {client_phone}\n"
+    
+    send_telegram_message_with_buttons(
+        bot_token,
+        chat_id,
+        response_text,
+        [
+            [{"text": "✅ Отправить чек", "callback_data": f"confirm_{preview_id}"}],
+            [{"text": "✏️ Изменить", "callback_data": f"edit_{preview_id}"}],
+            [{"text": "❌ Отменить", "callback_data": f"cancel_{preview_id}"}]
+        ]
+    )
+
+
+def get_preview_payment_type(preview_id: str) -> Optional[str]:
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return None
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT payment_type FROM telegram_previews WHERE preview_id = %s",
+            (preview_id,)
+        )
+        
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if result and result[0]:
+            return result[0]
+        
+        return None
+    except Exception as e:
+        print(f"[ERROR] Failed to get payment type: {e}")
+        return None
 
 
 def get_bot_token() -> str:
