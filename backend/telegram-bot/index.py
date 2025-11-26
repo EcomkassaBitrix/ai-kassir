@@ -99,9 +99,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         if receipt_result.get('success'):
             receipt_data = receipt_result.get('receipt', {})
+            print(f"[DEBUG] receipt_data keys: {receipt_data.keys() if receipt_data else 'None'}")
             items = receipt_data.get('items', [])
+            print(f"[DEBUG] items: {items}")
             total = receipt_data.get('total', 0)
             payments = receipt_data.get('payments', [])
+            print(f"[DEBUG] total: {total}, payments: {payments}")
             
             # Determine payment type from payments array
             payment_type = payments[0].get('type', '1') if payments else '1'
@@ -123,6 +126,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Add UUID if present
             if receipt_result.get('uuid'):
                 response_text += f"\n\n🆔 UUID: {receipt_result['uuid']}"
+            
+            print(f"[DEBUG] response_text: {response_text}")
             
         else:
             if 'message' in receipt_result:
