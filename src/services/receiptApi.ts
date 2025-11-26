@@ -66,6 +66,33 @@ export const confirmReceipt = async (
   lastReceiptData: any,
   settings: any
 ) => {
+  const oldUserId = localStorage.getItem('poehali_user_id') || '';
+  const isOldAnonymousUser = oldUserId && !oldUserId.startsWith('ecom_');
+  
+  if (isOldAnonymousUser && settings.ecomkassa_login) {
+    try {
+      const migrateResponse = await fetch('https://functions.poehali.dev/8effbced-c4d0-4505-816b-605f1eb102c9', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          old_user_id: oldUserId,
+          ecomkassa_login: settings.ecomkassa_login
+        })
+      });
+      
+      if (migrateResponse.ok) {
+        const migrateData = await migrateResponse.json();
+        const newUserId = migrateData.new_user_id;
+        localStorage.setItem('poehali_user_id', newUserId);
+        console.log('[MIGRATION] User migrated before receipt creation:', migrateData);
+      }
+    } catch (error) {
+      console.error('[MIGRATION] Failed to migrate user before receipt:', error);
+    }
+  }
+  
   const externalId = `AI_${Date.now()}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 65000);
