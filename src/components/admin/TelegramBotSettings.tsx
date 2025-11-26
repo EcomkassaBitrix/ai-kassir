@@ -143,27 +143,28 @@ export const TelegramBotSettings = () => {
         <div className="space-y-4">
           <div>
             <label className="text-sm font-medium mb-2 block">Токен бота</label>
-            <Input
-              type="password"
-              placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
-              value={botToken}
-              onChange={(e) => setBotToken(e.target.value)}
-              className="font-mono"
-            />
+            <div className="flex gap-2">
+              <Input
+                type="password"
+                placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+                value={botToken}
+                onChange={(e) => setBotToken(e.target.value)}
+                className="font-mono flex-1"
+              />
+              <Button
+                onClick={toggleWebhook}
+                disabled={toggling || !botToken}
+                variant={webhookActive ? 'destructive' : 'default'}
+                size="default"
+              >
+                <Icon name={webhookActive ? 'Power' : 'Check'} size={16} className="mr-2" />
+                {toggling ? 'Ждите...' : (webhookActive ? 'Отключить' : 'Подключить')}
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground mt-1">
               Получите токен у <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">@BotFather</a>
             </p>
           </div>
-
-          <Button
-            onClick={toggleWebhook}
-            disabled={toggling || !botToken}
-            variant={webhookActive ? 'destructive' : 'default'}
-            className="w-full"
-          >
-            <Icon name={webhookActive ? 'Power' : 'Check'} size={16} className="mr-2" />
-            {toggling ? 'Подождите...' : (webhookActive ? 'Отключить бота' : 'Подключить бота')}
-          </Button>
 
           {webhookStatus && (
             <div className="p-4 bg-muted rounded-lg">
