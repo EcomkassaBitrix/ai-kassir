@@ -271,6 +271,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({'error': 'Method not allowed'})
         }
     
+    headers = event.get('headers', {})
+    user_id: str = headers.get('X-User-Id', headers.get('x-user-id', ''))
+    
     body_data = json.loads(event.get('body', '{}'))
     user_message: str = body_data.get('message', '')
     operation_type: str = body_data.get('operation_type', '')
@@ -702,7 +705,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'operation_type': operation_type,
             'demo': True
         }
-        save_receipt_to_db(external_id, user_message, parsed_receipt, operation_type, None, True)
+        save_receipt_to_db(external_id, user_message, parsed_receipt, operation_type, None, True, None, user_id)
         return {
             'statusCode': 200,
             'headers': {
@@ -722,7 +725,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'operation_type': operation_type,
             'demo': True
         }
-        save_receipt_to_db(external_id, user_message, parsed_receipt, operation_type, None, True)
+        save_receipt_to_db(external_id, user_message, parsed_receipt, operation_type, None, True, None, user_id)
         return {
             'statusCode': 200,
             'headers': {
@@ -761,7 +764,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         operation_type,
                         result.get('ecomkassa_response'),
                         result.get('demo', False),
-                        result.get('uuid')
+                        result.get('uuid'),
+                        user_id
                     )
                     created_receipts.append({
                         'index': i+1,
@@ -811,7 +815,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         operation_type,
         receipt_result.get('ecomkassa_response'),
         receipt_result.get('demo', False),
-        receipt_result.get('uuid')
+        receipt_result.get('uuid'),
+        user_id
     )
     
     return {
@@ -1681,7 +1686,8 @@ def save_receipt_to_db(
     operation_type: str,
     ecomkassa_response: Optional[Dict[str, Any]],
     demo_mode: bool,
-    uuid: Optional[str] = None
+    uuid: Optional[str] = None,
+    user_id: str = ''
 ) -> None:
     database_url = os.environ.get('DATABASE_URL', '')
     
@@ -1699,9 +1705,9 @@ def save_receipt_to_db(
         payment_type_display = payments[0].get('type', '1') if payments else receipt_data.get('payment_type', 'card')
         
         cursor.execute(
-            'INSERT INTO receipts (external_id, user_message, operation_type, items, total, '
+            'INSERT INTO receipts (external_id, user_id, user_message, operation_type, items, total, '
             'payment_type, payments, customer_email, ecomkassa_response, status, demo_mode, uuid) '
-            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
             'ON CONFLICT (external_id) DO UPDATE SET '
             'ecomkassa_response = EXCLUDED.ecomkassa_response, '
             'payments = EXCLUDED.payments, '
@@ -1710,6 +1716,7 @@ def save_receipt_to_db(
             'updated_at = CURRENT_TIMESTAMP',
             (
                 external_id,
+                user_id,
                 user_message,
                 operation_type,
                 json.dumps(receipt_data['items']),

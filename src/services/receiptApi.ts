@@ -62,12 +62,14 @@ export const sendReceiptPreview = async (
 ) => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 65000);
+  const userId = getUserId();
 
   try {
     const response = await fetch(RECEIPT_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-User-Id': userId
       },
       body: JSON.stringify({
         message: userInput,
@@ -97,12 +99,14 @@ export const confirmReceipt = async (
   const externalId = `AI_${Date.now()}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 65000);
+  const userId = getUserId();
   
   try {
     const response = await fetch(RECEIPT_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-User-Id': userId
       },
       body: JSON.stringify({
         message: userInput,
