@@ -1050,6 +1050,18 @@ def find_editing_preview_for_chat(chat_id: int) -> Optional[str]:
         )
         
         # Find most recent preview for this chat that has editing state
+        print(f"[DEBUG] Searching for preview with chat_id={chat_id}")
+        
+        # First check if there are any edit states at all
+        cur.execute("SELECT COUNT(*) FROM telegram_edit_states")
+        edit_states_count = cur.fetchone()[0]
+        print(f"[DEBUG] Total edit_states in DB: {edit_states_count}")
+        
+        # Check if there are previews for this chat
+        cur.execute("SELECT COUNT(*) FROM telegram_previews WHERE chat_id = %s", (chat_id,))
+        previews_count = cur.fetchone()[0]
+        print(f"[DEBUG] Previews for chat_id {chat_id}: {previews_count}")
+        
         cur.execute(
             "SELECT p.preview_id FROM telegram_previews p "
             "JOIN telegram_edit_states e ON p.preview_id = e.preview_id "
@@ -1063,8 +1075,10 @@ def find_editing_preview_for_chat(chat_id: int) -> Optional[str]:
         conn.close()
         
         if result:
+            print(f"[DEBUG] Found preview_id: {result[0]}")
             return result[0]
         
+        print(f"[DEBUG] No preview found for chat_id {chat_id}")
         return None
     except Exception as e:
         print(f"[ERROR] Failed to find editing preview: {e}")
