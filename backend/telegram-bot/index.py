@@ -468,6 +468,12 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
     message_id = callback_query['message']['message_id']
     callback_data = callback_query['data']
     
+    # CRITICAL DEBUG: Log ALL incoming callback_data
+    print(f"[DEBUG] ====== CALLBACK RECEIVED ======")
+    print(f"[DEBUG] callback_data: '{callback_data}'")
+    print(f"[DEBUG] chat_id: {chat_id}, message_id: {message_id}")
+    print(f"[DEBUG] ================================")
+    
     # Answer callback query to remove loading state
     answer_url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
     answer_req = urllib.request.Request(
