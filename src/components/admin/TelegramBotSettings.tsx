@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
 
 export const TelegramBotSettings = () => {
   const [webhookStatus, setWebhookStatus] = useState<string | null>(null);
   const [botToken, setBotToken] = useState('');
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [checking, setChecking] = useState(false);
   const [setting, setSetting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -32,6 +34,7 @@ export const TelegramBotSettings = () => {
       if (response.ok) {
         const data = await response.json();
         setBotToken(data.token || '');
+        setNotificationsEnabled(data.enabled || false);
       }
     } catch (error) {
       console.error('Failed to load token');
@@ -69,6 +72,31 @@ export const TelegramBotSettings = () => {
       toast.error('Ошибка сохранения');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleNotifications = async (enabled: boolean) => {
+    const adminToken = localStorage.getItem('admin_token');
+    if (!adminToken) return;
+
+    try {
+      const response = await fetch(tokenApiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Token': adminToken
+        },
+        body: JSON.stringify({ enabled })
+      });
+
+      if (response.ok) {
+        setNotificationsEnabled(enabled);
+        toast.success(enabled ? 'Уведомления включены' : 'Уведомления выключены');
+      } else {
+        toast.error('Ошибка сохранения');
+      }
+    } catch (error) {
+      toast.error('Ошибка сохранения');
     }
   };
 
@@ -165,6 +193,17 @@ export const TelegramBotSettings = () => {
             <Icon name="Save" size={16} className="mr-2" />
             {saving ? 'Сохранение...' : 'Сохранить токен'}
           </Button>
+
+          <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+            <div>
+              <p className="font-medium">Уведомления в Telegram</p>
+              <p className="text-xs text-muted-foreground">Отправлять новый фидбек в Telegram</p>
+            </div>
+            <Switch
+              checked={notificationsEnabled}
+              onCheckedChange={toggleNotifications}
+            />
+          </div>
 
           <div className="flex gap-2">
             <Button

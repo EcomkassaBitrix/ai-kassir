@@ -50,9 +50,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             cur.execute(
                 "SELECT setting_value FROM bot_settings WHERE setting_key = 'telegram_bot_token'"
             )
-            result = cur.fetchone()
+            token_result = cur.fetchone()
             
-            token = result[0] if result else ''
+            cur.execute(
+                "SELECT setting_value FROM bot_settings WHERE setting_key = 'telegram_notifications_enabled'"
+            )
+            enabled_result = cur.fetchone()
+            
+            token = token_result[0] if token_result else ''
+            enabled = enabled_result[0] == 'true' if enabled_result else False
             
             return {
                 'statusCode': 200,
@@ -61,29 +67,44 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'Access-Control-Allow-Origin': '*'
                 },
                 'isBase64Encoded': False,
-                'body': json.dumps({'token': token})
+                'body': json.dumps({'token': token, 'enabled': enabled})
             }
         
         elif method == 'POST':
             body_data = json.loads(event.get('body', '{}'))
-            token = body_data.get('token', '')
+            token = body_data.get('token')
+            enabled = body_data.get('enabled')
             
-            if not token:
-                return {
-                    'statusCode': 400,
-                    'headers': {'Content-Type': 'application/json'},
-                    'body': json.dumps({'error': 'Token required'})
-                }
+            if token is not None:
+                if not token:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'Token required'})
+                    }
+                
+                cur.execute(
+                    """
+                    INSERT INTO bot_settings (setting_key, setting_value)
+                    VALUES ('telegram_bot_token', %s)
+                    ON CONFLICT (setting_key) 
+                    DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (token,)
+                )
             
-            cur.execute(
-                """
-                INSERT INTO bot_settings (setting_key, setting_value)
-                VALUES ('telegram_bot_token', %s)
-                ON CONFLICT (setting_key) 
-                DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = CURRENT_TIMESTAMP
-                """,
-                (token,)
-            )
+            if enabled is not None:
+                enabled_str = 'true' if enabled else 'false'
+                cur.execute(
+                    """
+                    INSERT INTO bot_settings (setting_key, setting_value)
+                    VALUES ('telegram_notifications_enabled', %s)
+                    ON CONFLICT (setting_key) 
+                    DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (enabled_str,)
+                )
+            
             conn.commit()
             
             return {
