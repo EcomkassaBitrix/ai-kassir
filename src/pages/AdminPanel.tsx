@@ -6,6 +6,7 @@ import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
 import { AISettingsSectionNew } from '@/components/settings/AISettingsSectionNew';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { UsersAISettings } from '@/components/admin/UsersAISettings';
 
 interface FeedbackItem {
   message_id: string;
@@ -98,9 +99,10 @@ export const AdminPanel = () => {
         </div>
 
         <Tabs defaultValue="stats" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-8">
+          <TabsList className="grid w-full grid-cols-3 mb-8">
             <TabsTrigger value="stats">Статистика фидбека</TabsTrigger>
             <TabsTrigger value="ai">Настройки ИИ</TabsTrigger>
+            <TabsTrigger value="users-ai">AI Провайдеры пользователей</TabsTrigger>
           </TabsList>
 
           <TabsContent value="stats">
@@ -207,6 +209,10 @@ export const AdminPanel = () => {
 
           <TabsContent value="ai">
             <AISettingsSectionNew adminToken={adminToken} />
+          </TabsContent>
+
+          <TabsContent value="users-ai">
+            <UsersAISettings />
           </TabsContent>
         </Tabs>
       </div>
