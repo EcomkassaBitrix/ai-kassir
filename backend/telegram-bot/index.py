@@ -94,24 +94,35 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         print(f"[DEBUG] chat_id={chat_id}, resolved user_id='{user_id}'")
         
         receipt_result = process_receipt_ai(text, user_id)
+        print(f"[DEBUG] receipt_result keys: {receipt_result.keys() if receipt_result else 'None'}")
+        print(f"[DEBUG] receipt_result.success: {receipt_result.get('success')}")
         
         if receipt_result.get('success'):
-            receipt_data = receipt_result['data']
+            receipt_data = receipt_result.get('receipt', {})
             items = receipt_data.get('items', [])
-            total = receipt_data.get('Total', 0)
-            payment_type = receipt_data.get('PaymentType', 1)
+            total = receipt_data.get('total', 0)
+            payments = receipt_data.get('payments', [])
             
-            payment_names = {1: "💵 Наличные", 2: "💳 Карта", 3: "💰 СБП"}
-            payment_str = payment_names.get(payment_type, "Оплата")
+            # Determine payment type from payments array
+            payment_type = payments[0].get('type', '1') if payments else '1'
+            payment_names = {'0': "💵 Наличные", '1': "💳 Карта", '2': "📝 Предоплата", '3': "🏦 Кредит"}
+            payment_str = payment_names.get(str(payment_type), "💳 Безналичный")
             
             response_text = "✅ Чек создан!\n\n"
             for item in items:
-                name = item.get('Name', 'Товар')
-                price = item.get('Price', 0)
-                qty = item.get('Quantity', 1)
-                response_text += f"• {name} — {price}₽ x{qty}\n"
+                name = item.get('name', 'Товар')
+                price = item.get('price', 0)
+                qty = item.get('quantity', 1)
+                response_text += f"• {name} — {price}₽"
+                if qty > 1:
+                    response_text += f" x{qty}"
+                response_text += "\n"
             
             response_text += f"\n💰 Итого: {total}₽\n{payment_str}"
+            
+            # Add UUID if present
+            if receipt_result.get('uuid'):
+                response_text += f"\n\n🆔 UUID: {receipt_result['uuid']}"
             
         else:
             if 'message' in receipt_result:
