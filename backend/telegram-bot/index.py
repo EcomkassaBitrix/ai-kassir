@@ -90,6 +90,31 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             send_telegram_message(bot_token, chat_id, response_text)
             return create_response({'ok': True})
         
+        if text.startswith('/history'):
+            user_id = get_user_id_for_telegram(chat_id)
+            history = get_user_receipts_history(user_id, limit=10)
+            
+            if not history:
+                response_text = "📋 История чеков пуста"
+            else:
+                response_text = "📋 Последние 10 чеков:\n\n"
+                for receipt in history:
+                    created_at = receipt['created_at'].strftime('%d.%m.%Y %H:%M')
+                    status_emoji = '✅' if receipt['status'] == 'success' else '⚠️'
+                    total = receipt['total']
+                    uuid = receipt.get('uuid', 'N/A')
+                    
+                    items_text = ', '.join([item['name'] for item in receipt['items'][:2]])
+                    if len(receipt['items']) > 2:
+                        items_text += f" +{len(receipt['items']) - 2}"
+                    
+                    response_text += f"{status_emoji} {created_at}\n"
+                    response_text += f"{items_text}\n"
+                    response_text += f"💰 {total}₽ | UUID: {uuid}\n\n"
+            
+            send_telegram_message(bot_token, chat_id, response_text)
+            return create_response({'ok': True})
+        
         user_id = get_user_id_for_telegram(chat_id)
         print(f"[DEBUG] chat_id={chat_id}, resolved user_id='{user_id}'")
         
@@ -296,6 +321,43 @@ def get_user_id_for_telegram(telegram_chat_id: int) -> str:
     finally:
         cur.close()
         conn.close()
+
+
+def get_user_receipts_history(user_id: str, limit: int = 10) -> list:
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return []
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT created_at, items, total, status, uuid "
+            "FROM receipts "
+            "WHERE user_id = %s "
+            "ORDER BY created_at DESC LIMIT %s",
+            (user_id, limit)
+        )
+        
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        history = []
+        for row in rows:
+            history.append({
+                'created_at': row[0],
+                'items': row[1],
+                'total': float(row[2]),
+                'status': row[3],
+                'uuid': row[4]
+            })
+        
+        return history
+    except Exception as e:
+        print(f"[ERROR] Failed to load history: {e}")
+        return []
 
 
 def get_bot_token() -> str:
