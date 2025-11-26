@@ -378,6 +378,60 @@ def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = Fal
         }
 
 
+def process_receipt_ai_with_edited_data(receipt_data: dict, user_id: str) -> Dict[str, Any]:
+    '''Send edited receipt data directly to process-receipt backend'''
+    process_receipt_url = 'https://functions.poehali.dev/734da785-2867-4c5d-b20c-90fc6d86b11c'
+    
+    # Extract operation_type from receipt_data or default to 'sell'
+    operation_type = receipt_data.get('operation_type', 'sell')
+    
+    payload = {
+        'message': 'Edited receipt from Telegram',  # Dummy message, not used
+        'operation_type': operation_type,
+        'preview_only': False,  # Send to Ecomkassa
+        'edited_data': receipt_data,  # CRITICAL: Pass edited receipt directly
+        'settings': {}
+    }
+    
+    try:
+        req = urllib.request.Request(
+            process_receipt_url,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'X-User-Id': user_id
+            }
+        )
+        
+        with urllib.request.urlopen(req, timeout=60) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            return result
+            
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        try:
+            error_json = json.loads(error_body)
+            if 'message' in error_json:
+                return {
+                    'success': False,
+                    'message': error_json['message']
+                }
+            return {
+                'success': False,
+                'error': error_json.get('error', f'HTTP {e.code}')
+            }
+        except json.JSONDecodeError:
+            return {
+                'success': False,
+                'error': f'Ошибка AI: HTTP {e.code}'
+            }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Ошибка AI: {str(e)}'
+        }
+
+
 def create_response(data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'statusCode': 200,
@@ -493,9 +547,17 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         
         user_message = preview_data['user_message']
         user_id = preview_data['user_id']
+        receipt_data = preview_data.get('receipt_data')
         
-        # Create actual receipt
-        receipt_result = process_receipt_ai(user_message, user_id, preview_only=False)
+        # CRITICAL: Use edited receipt_data if available, otherwise parse from text
+        if receipt_data:
+            print(f"[DEBUG] Using edited receipt_data from preview")
+            # Send edited receipt directly to process-receipt with edited_data flag
+            receipt_result = process_receipt_ai_with_edited_data(receipt_data, user_id)
+        else:
+            print(f"[DEBUG] No receipt_data in preview, parsing from text")
+            # Fallback: parse from original message
+            receipt_result = process_receipt_ai(user_message, user_id, preview_only=False)
         
         if receipt_result.get('success'):
             receipt_data = receipt_result.get('receipt', {})
