@@ -753,8 +753,19 @@ def save_preview_data(chat_id: int, user_message: str, user_id: str, receipt_dat
             "user_message TEXT, "
             "user_id TEXT, "
             "receipt_data JSONB, "
+            "payment_type TEXT, "
             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
             ")"
+        )
+        
+        # Add receipt_data column if it doesn't exist
+        cur.execute(
+            "ALTER TABLE telegram_previews ADD COLUMN IF NOT EXISTS receipt_data JSONB"
+        )
+        
+        # Add payment_type column if it doesn't exist
+        cur.execute(
+            "ALTER TABLE telegram_previews ADD COLUMN IF NOT EXISTS payment_type TEXT"
         )
         
         cur.execute(
