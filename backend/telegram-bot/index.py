@@ -155,6 +155,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         preview_result = process_receipt_ai(text, user_id, preview_only=True)
         print(f"[DEBUG] preview_result: {preview_result.get('success')}, preview: {preview_result.get('preview')}")
         
+        # Clean up any old editing states for this chat when creating new preview
+        old_preview_id = find_editing_preview_for_chat(chat_id)
+        if old_preview_id:
+            delete_editing_state(old_preview_id)
+            delete_preview_data(old_preview_id)
+        
         if preview_result.get('preview'):
             receipt_data = preview_result.get('receipt', {})
             items = receipt_data.get('items', [])
@@ -260,6 +266,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
             
         else:
+            # Clean up any old editing states for this chat
+            old_preview_id = find_editing_preview_for_chat(chat_id)
+            if old_preview_id:
+                delete_editing_state(old_preview_id)
+                delete_preview_data(old_preview_id)
+            
             if 'message' in preview_result:
                 response_text = preview_result['message']
             else:
