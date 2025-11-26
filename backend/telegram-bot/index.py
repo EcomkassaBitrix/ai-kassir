@@ -94,7 +94,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         receipt_result = process_receipt_ai(text, user_id)
         
-        if receipt_result['success']:
+        if receipt_result.get('success'):
             receipt_data = receipt_result['data']
             items = receipt_data.get('items', [])
             total = receipt_data.get('Total', 0)
@@ -113,7 +113,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             response_text += f"\n💰 Итого: {total}₽\n{payment_str}"
             
         else:
-            response_text = f"❌ Ошибка: {receipt_result.get('error', 'Не удалось создать чек')}"
+            if 'message' in receipt_result:
+                response_text = receipt_result['message']
+            else:
+                response_text = f"❌ Ошибка: {receipt_result.get('error', 'Не удалось создать чек')}"
         
         send_telegram_message(bot_token, chat_id, response_text)
         

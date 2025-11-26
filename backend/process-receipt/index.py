@@ -319,13 +319,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if keyword in text_lower:
                 print(f"[DEBUG] Irrelevant request blocked: '{user_message}' contains '{keyword}'")
                 return {
-                    'statusCode': 400,
+                    'statusCode': 200,
                     'headers': {
                         'Content-Type': 'application/json',
                         'Access-Control-Allow-Origin': '*'
                     },
                     'body': json.dumps({
-                        'error': '❌ Я ИИ-кассир и помогаю только с созданием чеков. Укажи товар/услугу, цену и email клиента для создания чека.'
+                        'success': False,
+                        'message': 'Привет! 👋 Я ИИ-кассир. Помогаю создавать чеки.\n\nНапример:\n• "Кофе 200₽"\n• "Стрижка 1500₽ test@mail.ru"\n• "Продал телефон 15000"'
                     })
                 }
         
