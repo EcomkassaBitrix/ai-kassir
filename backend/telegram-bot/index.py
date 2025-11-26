@@ -45,6 +45,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         update = json.loads(event.get('body', '{}'))
         
+        # Handle callback queries (button presses)
+        if 'callback_query' in update:
+            return handle_callback_query(update['callback_query'], bot_token)
+        
         if 'message' not in update:
             return {
                 'statusCode': 200,
@@ -118,25 +122,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         user_id = get_user_id_for_telegram(chat_id)
         print(f"[DEBUG] chat_id={chat_id}, resolved user_id='{user_id}'")
         
-        receipt_result = process_receipt_ai(text, user_id)
-        print(f"[DEBUG] receipt_result keys: {receipt_result.keys() if receipt_result else 'None'}")
-        print(f"[DEBUG] receipt_result.success: {receipt_result.get('success')}")
+        # Get preview of the receipt
+        preview_result = process_receipt_ai(text, user_id, preview_only=True)
+        print(f"[DEBUG] preview_result: {preview_result.get('success')}, preview: {preview_result.get('preview')}")
         
-        if receipt_result.get('success'):
-            receipt_data = receipt_result.get('receipt', {})
-            print(f"[DEBUG] receipt_data keys: {receipt_data.keys() if receipt_data else 'None'}")
+        if preview_result.get('preview'):
+            receipt_data = preview_result.get('receipt', {})
             items = receipt_data.get('items', [])
-            print(f"[DEBUG] items: {items}")
             total = receipt_data.get('total', 0)
             payments = receipt_data.get('payments', [])
-            print(f"[DEBUG] total: {total}, payments: {payments}")
             
             # Determine payment type from payments array
             payment_type = payments[0].get('type', '1') if payments else '1'
             payment_names = {'0': "💵 Наличные", '1': "💳 Карта", '2': "📝 Предоплата", '3': "🏦 Кредит"}
             payment_str = payment_names.get(str(payment_type), "💳 Безналичный")
             
-            response_text = "✅ Чек создан!\n\n"
+            response_text = "📋 Проверь чек перед отправкой:\n\n"
             for item in items:
                 name = item.get('name', 'Товар')
                 price = item.get('price', 0)
@@ -148,19 +149,31 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             response_text += f"\n💰 Итого: {total}₽\n{payment_str}"
             
-            # Add UUID if present
-            if receipt_result.get('uuid'):
-                response_text += f"\n\n🆔 UUID: {receipt_result['uuid']}"
+            client_email = receipt_data.get('client', {}).get('email', '')
+            if client_email:
+                response_text += f"\n📧 Email: {client_email}"
             
-            print(f"[DEBUG] response_text: {response_text}")
+            # Save preview data to send with callback
+            preview_id = save_preview_data(chat_id, text, user_id)
+            
+            # Send with inline keyboard
+            send_telegram_message_with_buttons(
+                bot_token, 
+                chat_id, 
+                response_text,
+                [
+                    [{"text": "✅ Отправить чек", "callback_data": f"confirm_{preview_id}"}],
+                    [{"text": "❌ Отменить", "callback_data": f"cancel_{preview_id}"}]
+                ]
+            )
             
         else:
-            if 'message' in receipt_result:
-                response_text = receipt_result['message']
+            if 'message' in preview_result:
+                response_text = preview_result['message']
             else:
-                response_text = f"❌ Ошибка: {receipt_result.get('error', 'Не удалось создать чек')}"
-        
-        send_telegram_message(bot_token, chat_id, response_text)
+                response_text = f"❌ Ошибка: {preview_result.get('error', 'Не удалось создать чек')}"
+            
+            send_telegram_message(bot_token, chat_id, response_text)
         
         return create_response({'ok': True})
         
@@ -189,13 +202,33 @@ def send_telegram_message(bot_token: str, chat_id: int, text: str) -> None:
     urllib.request.urlopen(req, timeout=10)
 
 
-def process_receipt_ai(user_message: str, user_id: str) -> Dict[str, Any]:
+def send_telegram_message_with_buttons(bot_token: str, chat_id: int, text: str, buttons: list) -> None:
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    data = {
+        'chat_id': chat_id,
+        'text': text,
+        'parse_mode': 'HTML',
+        'reply_markup': {
+            'inline_keyboard': buttons
+        }
+    }
+    
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(data).encode('utf-8'),
+        headers={'Content-Type': 'application/json'}
+    )
+    
+    urllib.request.urlopen(req, timeout=10)
+
+
+def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = False) -> Dict[str, Any]:
     process_receipt_url = 'https://functions.poehali.dev/734da785-2867-4c5d-b20c-90fc6d86b11c'
     
     payload = {
         'message': user_message,
         'operation_type': 'Приход',
-        'preview_only': False,
+        'preview_only': preview_only,
         'external_id': f"TG_{int(datetime.now().timestamp())}",
         'settings': {}
     }
@@ -321,6 +354,181 @@ def get_user_id_for_telegram(telegram_chat_id: int) -> str:
     finally:
         cur.close()
         conn.close()
+
+
+def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dict[str, Any]:
+    query_id = callback_query['id']
+    chat_id = callback_query['message']['chat']['id']
+    message_id = callback_query['message']['message_id']
+    callback_data = callback_query['data']
+    
+    # Answer callback query to remove loading state
+    answer_url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
+    answer_req = urllib.request.Request(
+        answer_url,
+        data=json.dumps({'callback_query_id': query_id}).encode('utf-8'),
+        headers={'Content-Type': 'application/json'}
+    )
+    urllib.request.urlopen(answer_req, timeout=5)
+    
+    if callback_data.startswith('confirm_'):
+        preview_id = callback_data.replace('confirm_', '')
+        preview_data = get_preview_data(preview_id)
+        
+        if not preview_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
+        
+        user_message = preview_data['user_message']
+        user_id = preview_data['user_id']
+        
+        # Create actual receipt
+        receipt_result = process_receipt_ai(user_message, user_id, preview_only=False)
+        
+        if receipt_result.get('success'):
+            receipt_data = receipt_result.get('receipt', {})
+            items = receipt_data.get('items', [])
+            total = receipt_data.get('total', 0)
+            payments = receipt_data.get('payments', [])
+            
+            payment_type = payments[0].get('type', '1') if payments else '1'
+            payment_names = {'0': "💵 Наличные", '1': "💳 Карта", '2': "📝 Предоплата", '3': "🏦 Кредит"}
+            payment_str = payment_names.get(str(payment_type), "💳 Безналичный")
+            
+            response_text = "✅ Чек создан и отправлен!\n\n"
+            for item in items:
+                name = item.get('name', 'Товар')
+                price = item.get('price', 0)
+                qty = item.get('quantity', 1)
+                response_text += f"• {name} — {price}₽"
+                if qty > 1:
+                    response_text += f" x{qty}"
+                response_text += "\n"
+            
+            response_text += f"\n💰 Итого: {total}₽\n{payment_str}"
+            
+            if receipt_result.get('uuid'):
+                response_text += f"\n\n🆔 UUID: {receipt_result['uuid']}"
+            
+            edit_message(bot_token, chat_id, message_id, response_text)
+        else:
+            error_msg = receipt_result.get('message') or receipt_result.get('error', 'Не удалось создать чек')
+            edit_message(bot_token, chat_id, message_id, f"❌ Ошибка: {error_msg}")
+        
+        delete_preview_data(preview_id)
+        
+    elif callback_data.startswith('cancel_'):
+        preview_id = callback_data.replace('cancel_', '')
+        edit_message(bot_token, chat_id, message_id, "❌ Создание чека отменено")
+        delete_preview_data(preview_id)
+    
+    return create_response({'ok': True})
+
+
+def edit_message(bot_token: str, chat_id: int, message_id: int, text: str) -> None:
+    url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
+    data = {
+        'chat_id': chat_id,
+        'message_id': message_id,
+        'text': text,
+        'parse_mode': 'HTML'
+    }
+    
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(data).encode('utf-8'),
+        headers={'Content-Type': 'application/json'}
+    )
+    
+    try:
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        print(f"[ERROR] Failed to edit message: {e}")
+
+
+def save_preview_data(chat_id: int, user_message: str, user_id: str) -> str:
+    import time
+    preview_id = f"{chat_id}_{int(time.time())}"
+    
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return preview_id
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS telegram_previews ("
+            "preview_id TEXT PRIMARY KEY, "
+            "chat_id BIGINT, "
+            "user_message TEXT, "
+            "user_id TEXT, "
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        
+        cur.execute(
+            "INSERT INTO telegram_previews (preview_id, chat_id, user_message, user_id) "
+            "VALUES (%s, %s, %s, %s)",
+            (preview_id, chat_id, user_message, user_id)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[ERROR] Failed to save preview: {e}")
+    
+    return preview_id
+
+
+def get_preview_data(preview_id: str) -> Optional[Dict[str, Any]]:
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return None
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT user_message, user_id FROM telegram_previews WHERE preview_id = %s",
+            (preview_id,)
+        )
+        
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if result:
+            return {
+                'user_message': result[0],
+                'user_id': result[1]
+            }
+        
+        return None
+    except Exception as e:
+        print(f"[ERROR] Failed to get preview: {e}")
+        return None
+
+
+def delete_preview_data(preview_id: str) -> None:
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute("DELETE FROM telegram_previews WHERE preview_id = %s", (preview_id,))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[ERROR] Failed to delete preview: {e}")
 
 
 def get_user_receipts_history(user_id: str, limit: int = 10) -> list:
