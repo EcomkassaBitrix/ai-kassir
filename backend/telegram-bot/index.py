@@ -172,6 +172,24 @@ def process_receipt_ai(user_message: str, user_id: str) -> Dict[str, Any]:
             result = json.loads(response.read().decode('utf-8'))
             return result
             
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        try:
+            error_json = json.loads(error_body)
+            if 'message' in error_json:
+                return {
+                    'success': False,
+                    'message': error_json['message']
+                }
+            return {
+                'success': False,
+                'error': error_json.get('error', f'HTTP {e.code}')
+            }
+        except json.JSONDecodeError:
+            return {
+                'success': False,
+                'error': f'Ошибка AI: HTTP {e.code}'
+            }
     except Exception as e:
         return {
             'success': False,
