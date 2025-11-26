@@ -534,6 +534,53 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         edit_message(bot_token, chat_id, message_id, "❌ Создание чека отменено")
         delete_preview_data(preview_id)
     
+    # CRITICAL: Check specific edit_* patterns BEFORE general edit_
+    elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_payment_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
+        # Extract field type and preview_id
+        print(f"[DEBUG] Edit field button clicked! callback_data: {callback_data}")
+        if callback_data.startswith('edit_item_'):
+            field = 'item'
+            preview_id = callback_data.replace('edit_item_', '')
+            prompt_text = "📝 <b>Изменить товар/услугу</b>\n\nОтправь новое название товара или услуги текстом.\n\nНапример: <code>кофе латте</code>"
+        elif callback_data.startswith('edit_price_'):
+            field = 'price'
+            preview_id = callback_data.replace('edit_price_', '')
+            prompt_text = "💰 <b>Изменить цену</b>\n\nОтправь новую цену числом.\n\nНапример: <code>350</code>"
+        elif callback_data.startswith('edit_quantity_'):
+            field = 'quantity'
+            preview_id = callback_data.replace('edit_quantity_', '')
+            prompt_text = "📊 <b>Изменить количество</b>\n\nОтправь новое количество числом.\n\nНапример: <code>2</code>"
+        elif callback_data.startswith('edit_payment_'):
+            field = 'payment'
+            preview_id = callback_data.replace('edit_payment_', '')
+            prompt_text = "💳 <b>Выбери способ оплаты:</b>"
+            
+            payment_buttons = [
+                [{"text": "💵 Наличные", "callback_data": f"set_payment_0_{preview_id}"}],
+                [{"text": "💳 Безналичный", "callback_data": f"set_payment_1_{preview_id}"}],
+                [{"text": "📝 Предоплата", "callback_data": f"set_payment_2_{preview_id}"}],
+                [{"text": "🏦 Кредит", "callback_data": f"set_payment_3_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+            ]
+            
+            edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, payment_buttons)
+            return create_response({'ok': True})
+        elif callback_data.startswith('edit_email_'):
+            field = 'email'
+            preview_id = callback_data.replace('edit_email_', '')
+            prompt_text = "📧 <b>Изменить email клиента</b>\n\nОтправь новый email текстом.\n\nНапример: <code>client@mail.ru</code>"
+        elif callback_data.startswith('edit_phone_'):
+            field = 'phone'
+            preview_id = callback_data.replace('edit_phone_', '')
+            prompt_text = "📱 <b>Изменить телефон клиента</b>\n\nОтправь новый телефон текстом.\n\nНапример: <code>+79991234567</code>"
+        
+        # Save editing state
+        print(f"[DEBUG] About to call save_editing_state with preview_id='{preview_id}', field='{field}'")
+        save_editing_state(preview_id, field)
+        print(f"[DEBUG] save_editing_state completed, now sending prompt message")
+        
+        edit_message(bot_token, chat_id, message_id, prompt_text)
+    
     elif callback_data.startswith('edit_'):
         preview_id = callback_data.replace('edit_', '')
         preview_data = get_preview_data(preview_id)
@@ -650,52 +697,6 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
                     [{"text": "❌ Отменить", "callback_data": f"cancel_{preview_id}"}]
                 ]
             )
-    
-    elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_payment_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
-        # Extract field type and preview_id
-        print(f"[DEBUG] Edit field button clicked! callback_data: {callback_data}")
-        if callback_data.startswith('edit_item_'):
-            field = 'item'
-            preview_id = callback_data.replace('edit_item_', '')
-            prompt_text = "📝 <b>Изменить товар/услугу</b>\n\nОтправь новое название товара или услуги текстом.\n\nНапример: <code>кофе латте</code>"
-        elif callback_data.startswith('edit_price_'):
-            field = 'price'
-            preview_id = callback_data.replace('edit_price_', '')
-            prompt_text = "💰 <b>Изменить цену</b>\n\nОтправь новую цену числом.\n\nНапример: <code>350</code>"
-        elif callback_data.startswith('edit_quantity_'):
-            field = 'quantity'
-            preview_id = callback_data.replace('edit_quantity_', '')
-            prompt_text = "📊 <b>Изменить количество</b>\n\nОтправь новое количество числом.\n\nНапример: <code>2</code>"
-        elif callback_data.startswith('edit_payment_'):
-            field = 'payment'
-            preview_id = callback_data.replace('edit_payment_', '')
-            prompt_text = "💳 <b>Выбери способ оплаты:</b>"
-            
-            payment_buttons = [
-                [{"text": "💵 Наличные", "callback_data": f"set_payment_0_{preview_id}"}],
-                [{"text": "💳 Безналичный", "callback_data": f"set_payment_1_{preview_id}"}],
-                [{"text": "📝 Предоплата", "callback_data": f"set_payment_2_{preview_id}"}],
-                [{"text": "🏦 Кредит", "callback_data": f"set_payment_3_{preview_id}"}],
-                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
-            ]
-            
-            edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, payment_buttons)
-            return create_response({'ok': True})
-        elif callback_data.startswith('edit_email_'):
-            field = 'email'
-            preview_id = callback_data.replace('edit_email_', '')
-            prompt_text = "📧 <b>Изменить email клиента</b>\n\nОтправь новый email текстом.\n\nНапример: <code>client@mail.ru</code>"
-        elif callback_data.startswith('edit_phone_'):
-            field = 'phone'
-            preview_id = callback_data.replace('edit_phone_', '')
-            prompt_text = "📱 <b>Изменить телефон клиента</b>\n\nОтправь новый телефон текстом.\n\nНапример: <code>+79991234567</code>"
-        
-        # Save editing state
-        print(f"[DEBUG] About to call save_editing_state with preview_id='{preview_id}', field='{field}'")
-        save_editing_state(preview_id, field)
-        print(f"[DEBUG] save_editing_state completed, now sending prompt message")
-        
-        edit_message(bot_token, chat_id, message_id, prompt_text)
     
     elif callback_data.startswith('set_payment_'):
         # Extract payment type and preview_id
