@@ -131,27 +131,86 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             items = receipt_data.get('items', [])
             total = receipt_data.get('total', 0)
             payments = receipt_data.get('payments', [])
+            client_data = receipt_data.get('client', {})
+            operation_type = preview_result.get('operation_type', 'sell')
             
-            # Determine payment type from payments array
-            payment_type = payments[0].get('type', '1') if payments else '1'
-            payment_names = {'0': "💵 Наличные", '1': "💳 Карта", '2': "📝 Предоплата", '3': "🏦 Кредит"}
-            payment_str = payment_names.get(str(payment_type), "💳 Безналичный")
+            # Operation type names
+            operation_names = {
+                'sell': '🛒 Приход (продажа)',
+                'refund': '↩️ Возврат прихода',
+                'sell_correction': '📝 Коррекция прихода',
+                'refund_correction': '📝 Коррекция расхода'
+            }
             
-            response_text = "📋 Проверь чек перед отправкой:\n\n"
-            for item in items:
+            response_text = "📋 <b>Проверь чек перед отправкой:</b>\n\n"
+            response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
+            
+            # Items with all details
+            response_text += "<b>Товары/Услуги:</b>\n"
+            for idx, item in enumerate(items, 1):
                 name = item.get('name', 'Товар')
                 price = item.get('price', 0)
                 qty = item.get('quantity', 1)
-                response_text += f"• {name} — {price}₽"
-                if qty > 1:
-                    response_text += f" x{qty}"
-                response_text += "\n"
+                measure = item.get('measure', 'шт')
+                vat = item.get('vat', 'none')
+                payment_method = item.get('payment_method', 'full_payment')
+                payment_object = item.get('payment_object', 'commodity')
+                
+                # VAT names
+                vat_names = {
+                    'none': 'Без НДС',
+                    'vat0': 'НДС 0%',
+                    'vat10': 'НДС 10%',
+                    'vat20': 'НДС 20%'
+                }
+                
+                # Payment method names
+                method_names = {
+                    'full_payment': 'Полный расчёт',
+                    'prepayment': 'Предоплата',
+                    'advance': 'Аванс',
+                    'full_prepayment': 'Предоплата 100%',
+                    'partial_payment': 'Частичный расчёт',
+                    'credit': 'Кредит',
+                    'credit_payment': 'Оплата кредита'
+                }
+                
+                # Payment object names
+                object_names = {
+                    'commodity': 'Товар',
+                    'service': 'Услуга',
+                    'excise': 'Подакцизный товар',
+                    'job': 'Работа'
+                }
+                
+                response_text += f"\n<b>{idx}. {name}</b>\n"
+                response_text += f"   Цена: {price}₽ × {qty} {measure}\n"
+                response_text += f"   НДС: {vat_names.get(vat, vat)}\n"
+                response_text += f"   Предмет: {object_names.get(payment_object, payment_object)}\n"
+                response_text += f"   Способ: {method_names.get(payment_method, payment_method)}\n"
             
-            response_text += f"\n💰 Итого: {total}₽\n{payment_str}"
+            # Payment details
+            response_text += f"\n<b>💰 Итого:</b> {total}₽\n\n"
             
-            client_email = receipt_data.get('client', {}).get('email', '')
-            if client_email:
-                response_text += f"\n📧 Email: {client_email}"
+            if payments and len(payments) > 1:
+                response_text += "<b>Способы оплаты:</b>\n"
+                payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
+                for payment in payments:
+                    ptype = payment.get('type', '1')
+                    psum = payment.get('sum', 0)
+                    response_text += f"  • {payment_names.get(str(ptype), 'Безнал')}: {psum}₽\n"
+            else:
+                payment_type = payments[0].get('type', '1') if payments else '1'
+                payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
+                payment_str = payment_names.get(str(payment_type), "💳 Безналичный")
+                response_text += f"<b>Способ оплаты:</b> {payment_str}\n"
+            
+            # Client info
+            response_text += f"\n<b>📧 Email клиента:</b> {client_data.get('email', 'Не указан')}\n"
+            
+            client_phone = client_data.get('phone')
+            if client_phone:
+                response_text += f"<b>📱 Телефон:</b> {client_phone}\n"
             
             # Save preview data to send with callback
             preview_id = save_preview_data(chat_id, text, user_id)
