@@ -240,6 +240,47 @@ def extract_json_from_text(text: str) -> Optional[Dict[str, Any]]:
     except json.JSONDecodeError:
         return None
 
+
+def load_user_settings_from_db(user_id: str) -> Optional[Dict[str, Any]]:
+    '''Load user settings from database by user_id'''
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        return None
+    
+    import psycopg2
+    
+    try:
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT ecomkassa_login, ecomkassa_password, group_code, company_email, inn, sno, payment_address, default_vat "
+            "FROM user_settings WHERE user_id = %s LIMIT 1",
+            (user_id,)
+        )
+        
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if row:
+            return {
+                'ecomkassa_login': row[0] or '',
+                'ecomkassa_password': row[1] or '',
+                'group_code': row[2] or '',
+                'company_email': row[3] or '',
+                'inn': row[4] or '',
+                'sno': row[5] or 'usn_income',
+                'payment_address': row[6] or '',
+                'default_vat': row[7] or 'none'
+            }
+        
+        return None
+    except Exception as e:
+        print(f"[ERROR] Failed to load user settings: {e}")
+        return None
+
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     Business: Process natural language receipt requests and create receipt via ecomkassa API
@@ -282,6 +323,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     previous_receipt: dict = body_data.get('previous_receipt', {})
     edited_data: dict = body_data.get('edited_data')
     context_message: str = body_data.get('context_message', '')
+    
+    # Load user settings from database if user_id is provided
+    if user_id:
+        print(f"[DEBUG] Loading settings for user_id: {user_id}")
+        user_settings = load_user_settings_from_db(user_id)
+        if user_settings:
+            print(f"[DEBUG] User settings loaded: ecomkassa_login={user_settings.get('ecomkassa_login')}, group_code={user_settings.get('group_code')}")
+            # Merge user settings with provided settings (user settings take priority)
+            settings = {**settings, **user_settings}
+        else:
+            print(f"[DEBUG] No user settings found for user_id: {user_id}")
     
     if not user_message:
         return {
