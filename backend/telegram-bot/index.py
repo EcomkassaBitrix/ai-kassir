@@ -124,6 +124,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Check if user is editing a field
         editing_preview_id = find_editing_preview_for_chat(chat_id)
+        print(f"[DEBUG] find_editing_preview_for_chat returned: {editing_preview_id}")
         if editing_preview_id:
             editing_field = get_editing_state(editing_preview_id)
             print(f"[DEBUG] User is editing field: {editing_field}")
@@ -131,6 +132,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if editing_field:
                 # Process the new value
                 preview_data = get_preview_data(editing_preview_id)
+                print(f"[DEBUG] preview_data exists: {preview_data is not None}")
                 if preview_data:
                     # Update preview with new value
                     update_success = update_preview_field(editing_preview_id, editing_field, text, user_id)
