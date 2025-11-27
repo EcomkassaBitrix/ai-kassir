@@ -238,8 +238,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             clear_context_for_chat(chat_id)
         
         # Check if user is editing a field
-        editing_preview_id = find_editing_preview_for_chat(chat_id)
-        print(f"[DEBUG] find_editing_preview_for_chat returned: {editing_preview_id}")
+        # CRITICAL: In groups, use sender_id to find editing preview (not group chat_id)
+        search_chat_id = sender_id if chat_type in ['group', 'supergroup'] else chat_id
+        editing_preview_id = find_editing_preview_for_chat(search_chat_id)
+        print(f"[DEBUG] find_editing_preview_for_chat(search_chat_id={search_chat_id}) returned: {editing_preview_id}")
         if editing_preview_id:
             editing_field = get_editing_state(editing_preview_id)
             print(f"[DEBUG] User is editing field: {editing_field}")
@@ -995,6 +997,9 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
     message_id = callback_query['message']['message_id']
     callback_data = callback_query['data']
     
+    # CRITICAL: Extract sender_id from callback_query (user who clicked button)
+    sender_id = callback_query.get('from', {}).get('id', chat_id)
+    
     # CRITICAL: Resolve user ID for groups
     # In groups, use the user who clicked the button, not the group ID
     lookup_id = resolve_user_lookup_id(callback_query['message'])
@@ -1002,7 +1007,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
     # CRITICAL DEBUG: Log ALL incoming callback_data
     print(f"[DEBUG] ====== CALLBACK RECEIVED ======")
     print(f"[DEBUG] callback_data: '{callback_data}'")
-    print(f"[DEBUG] chat_id: {chat_id}, lookup_id: {lookup_id}, message_id: {message_id}")
+    print(f"[DEBUG] chat_id: {chat_id}, sender_id: {sender_id}, lookup_id: {lookup_id}, message_id: {message_id}")
     print(f"[DEBUG] ================================")
     
     # Answer callback query to remove loading state
@@ -1276,8 +1281,8 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             prompt_text = "📱 <b>Изменить телефон клиента</b>\n\nОтправь новый телефон текстом.\n\nНапример: <code>+79991234567</code>"
         
         # Save editing state
-        print(f"[DEBUG] About to call save_editing_state with preview_id='{preview_id}', field='{field}'")
-        save_editing_state(preview_id, field)
+        print(f"[DEBUG] About to call save_editing_state with preview_id='{preview_id}', field='{field}', sender_id={sender_id}")
+        save_editing_state(preview_id, field, sender_id)
         print(f"[DEBUG] save_editing_state completed, now sending prompt message")
         
         edit_message(bot_token, chat_id, message_id, prompt_text)
@@ -2113,13 +2118,13 @@ def edit_message_with_buttons(bot_token: str, chat_id: int, message_id: int, tex
         print(f"[ERROR] Failed to edit message with buttons: {e}")
 
 
-def save_editing_state(preview_id: str, field: str) -> None:
+def save_editing_state(preview_id: str, field: str, sender_id: int = None) -> None:
     dsn = os.environ.get('DATABASE_URL')
     if not dsn:
         print(f"[ERROR] No DATABASE_URL, cannot save editing state")
         return
     
-    print(f"[DEBUG] save_editing_state called with preview_id='{preview_id}', field='{field}'")
+    print(f"[DEBUG] save_editing_state called with preview_id='{preview_id}', field='{field}', sender_id={sender_id}")
     
     try:
         conn = psycopg2.connect(dsn)
@@ -2129,17 +2134,23 @@ def save_editing_state(preview_id: str, field: str) -> None:
             "CREATE TABLE IF NOT EXISTS telegram_edit_states ("
             "preview_id TEXT PRIMARY KEY, "
             "field TEXT, "
+            "sender_id BIGINT, "
             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
             ")"
         )
         
-        print(f"[DEBUG] Inserting into telegram_edit_states: preview_id='{preview_id}', field='{field}'")
+        # Add sender_id column if not exists
+        cur.execute(
+            "ALTER TABLE telegram_edit_states ADD COLUMN IF NOT EXISTS sender_id BIGINT"
+        )
+        
+        print(f"[DEBUG] Inserting into telegram_edit_states: preview_id='{preview_id}', field='{field}', sender_id={sender_id}")
         
         cur.execute(
-            "INSERT INTO telegram_edit_states (preview_id, field) "
-            "VALUES (%s, %s) "
-            "ON CONFLICT (preview_id) DO UPDATE SET field = EXCLUDED.field, created_at = CURRENT_TIMESTAMP",
-            (preview_id, field)
+            "INSERT INTO telegram_edit_states (preview_id, field, sender_id) "
+            "VALUES (%s, %s, %s) "
+            "ON CONFLICT (preview_id) DO UPDATE SET field = EXCLUDED.field, sender_id = EXCLUDED.sender_id, created_at = CURRENT_TIMESTAMP",
+            (preview_id, field, sender_id)
         )
         
         print(f"[DEBUG] INSERT successful, affected rows: {cur.rowcount}")
@@ -2233,13 +2244,19 @@ def find_editing_preview_for_chat(chat_id: int) -> Optional[str]:
         conn = psycopg2.connect(dsn)
         cur = conn.cursor()
         
-        # Ensure telegram_edit_states table exists
+        # Ensure telegram_edit_states table exists with sender_id
         cur.execute(
             "CREATE TABLE IF NOT EXISTS telegram_edit_states ("
             "preview_id TEXT PRIMARY KEY, "
             "field TEXT, "
+            "sender_id BIGINT, "
             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
             ")"
+        )
+        
+        # Add sender_id column if not exists
+        cur.execute(
+            "ALTER TABLE telegram_edit_states ADD COLUMN IF NOT EXISTS sender_id BIGINT"
         )
         
         # Ensure telegram_previews has chat_id column
@@ -2259,19 +2276,26 @@ def find_editing_preview_for_chat(chat_id: int) -> Optional[str]:
             "ALTER TABLE telegram_previews ADD COLUMN IF NOT EXISTS chat_id BIGINT"
         )
         
-        # Find most recent preview for this chat that has editing state
-        print(f"[DEBUG] Searching for preview with chat_id={chat_id}")
+        # CRITICAL: Find editing state by sender_id (for groups) or chat_id (for private)
+        # First try to find by sender_id (groups)
+        print(f"[DEBUG] Searching for editing state with sender_id or chat_id={chat_id}")
         
-        # First check if there are any edit states at all
-        cur.execute("SELECT COUNT(*) FROM telegram_edit_states")
-        edit_states_count = cur.fetchone()[0]
-        print(f"[DEBUG] Total edit_states in DB: {edit_states_count}")
+        cur.execute(
+            "SELECT preview_id FROM telegram_edit_states "
+            "WHERE sender_id = %s "
+            "ORDER BY created_at DESC LIMIT 1",
+            (chat_id,)
+        )
         
-        # Check if there are previews for this chat
-        cur.execute("SELECT COUNT(*) FROM telegram_previews WHERE chat_id = %s", (chat_id,))
-        previews_count = cur.fetchone()[0]
-        print(f"[DEBUG] Previews for chat_id {chat_id}: {previews_count}")
+        result = cur.fetchone()
         
+        if result:
+            print(f"[DEBUG] Found editing state by sender_id: {result[0]}")
+            cur.close()
+            conn.close()
+            return result[0]
+        
+        # Fallback: find by p.chat_id (private chats or old data)
         cur.execute(
             "SELECT p.preview_id FROM telegram_previews p "
             "JOIN telegram_edit_states e ON p.preview_id = e.preview_id "
@@ -2285,10 +2309,10 @@ def find_editing_preview_for_chat(chat_id: int) -> Optional[str]:
         conn.close()
         
         if result:
-            print(f"[DEBUG] Found preview_id: {result[0]}")
+            print(f"[DEBUG] Found preview_id by chat_id: {result[0]}")
             return result[0]
         
-        print(f"[DEBUG] No preview found for chat_id {chat_id}")
+        print(f"[DEBUG] No editing state found for chat_id/sender_id {chat_id}")
         return None
     except Exception as e:
         print(f"[ERROR] Failed to find editing preview: {e}")
@@ -2884,17 +2908,23 @@ def show_receipt_preview(bot_token: str, chat_id: int, preview_data: Dict[str, A
     send_telegram_message_with_buttons(bot_token, chat_id, response_text, buttons)
 
 
-def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id: str) -> None:
+def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id: str, message_id: int = None) -> None:
     """Show updated preview after editing"""
     preview_data = get_preview_data(preview_id)
     if not preview_data:
-        send_telegram_message(bot_token, chat_id, "❌ Ошибка: данные не найдены")
+        if message_id:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+        else:
+            send_telegram_message(bot_token, chat_id, "❌ Ошибка: данные не найдены")
         return
     
     # Use stored receipt_data directly (already updated)
     receipt_data = preview_data.get('receipt_data')
     if not receipt_data:
-        send_telegram_message(bot_token, chat_id, "❌ Ошибка: данные чека не найдены")
+        if message_id:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные чека не найдены")
+        else:
+            send_telegram_message(bot_token, chat_id, "❌ Ошибка: данные чека не найдены")
         return
     items = receipt_data.get('items', [])
     total = receipt_data.get('total', 0)
