@@ -946,7 +946,8 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             payment_link_enabled = receipt_data.get('payment_link_enabled', False)
             
             if payment_link_enabled:
-                group_text = "💳 <b>Способ оплаты</b>\n\n⚠️ Тип оплаты: <b>Безналичный</b> (фиксировано для ссылки на оплату)\n\nВыбери параметр:"
+                provider_name = receipt_data.get('payment_provider_name', 'Не указан')
+                group_text = f"💳 <b>Способ оплаты</b>\n\n⚠️ Тип оплаты: <b>Ссылка на оплату ({provider_name})</b>\n(фиксировано для платежа через провайдера)\n\nВыбери параметр:"
                 group_buttons = [
                     [{"text": "💰 Сумма", "callback_data": f"edit_payment_sum_{preview_id}"}],
                     [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
@@ -2249,17 +2250,16 @@ def update_preview_payment_provider(preview_id: str, provider_id: str, provider_
         
         receipt_data = result[0]
         
-        # CRITICAL: Payment link always uses:
-        # - payment type = 1 (безналичный)
-        # - operation_type = 'sell' (продажа)
-        # - provider_id stored separately for link generation
+        # CRITICAL: Payment link uses provider ID in payments[0].type
+        # Example: Sberbank = 103, YuKassa = 102, etc.
+        # This is sent directly to Ecomkassa API as payment type
         if 'payments' in receipt_data and len(receipt_data['payments']) > 0:
-            receipt_data['payments'][0]['type'] = 1  # Always безналичный for payment link
-            print(f"[DEBUG] Set payment type to 1 (безналичный) for payment link")
+            receipt_data['payments'][0]['type'] = int(provider_id)  # Provider ID as payment type
+            print(f"[DEBUG] Set payment provider ID {provider_id} as payment type for payment link")
         
         receipt_data['payment_link_enabled'] = True
-        receipt_data['payment_provider_id'] = int(provider_id)  # Store provider ID separately
-        receipt_data['payment_provider_name'] = provider_name  # Save provider name
+        receipt_data['payment_provider_id'] = int(provider_id)  # Store provider ID separately for display
+        receipt_data['payment_provider_name'] = provider_name  # Save provider name for display
         receipt_data['operation_type'] = 'sell'  # Always Продажа for payment link
         print(f"[DEBUG] Set operation_type to 'sell' for payment link")
         
