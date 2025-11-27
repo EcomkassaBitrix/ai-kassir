@@ -265,6 +265,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if client_phone:
                 response_text += f"<b>📱 Телефон:</b> {client_phone}\n"
             
+            # Company info (SNO and payment address)
+            company_data = receipt_data.get('company', {})
+            sno = company_data.get('sno', 'usn_income')
+            payment_address = company_data.get('payment_address', '')
+            
+            sno_names = {
+                'usn_income': 'УСН доход',
+                'usn_income_outcome': 'УСН доход-расход',
+                'osn': 'ОСНО',
+                'esn': 'ЕСХН',
+                'patent': 'Патент'
+            }
+            
+            response_text += f"\n<b>💼 СНО:</b> {sno_names.get(sno, sno)}\n"
+            if payment_address:
+                response_text += f"<b>📍 Адрес расчетов:</b> {payment_address}\n"
+            
             # Add operation_type to receipt_data
             receipt_data['operation_type'] = operation_type
             
@@ -927,6 +944,23 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             client_phone = client_data.get('phone')
             if client_phone:
                 response_text += f"<b>📱 Телефон:</b> {client_phone}\n"
+            
+            # Company info (SNO and payment address)
+            company_data_back = receipt_data.get('company', {})
+            sno_back = company_data_back.get('sno', 'usn_income')
+            payment_address_back = company_data_back.get('payment_address', '')
+            
+            sno_names_back = {
+                'usn_income': 'УСН доход',
+                'usn_income_outcome': 'УСН доход-расход',
+                'osn': 'ОСНО',
+                'esn': 'ЕСХН',
+                'patent': 'Патент'
+            }
+            
+            response_text += f"\n<b>💼 СНО:</b> {sno_names_back.get(sno_back, sno_back)}\n"
+            if payment_address_back:
+                response_text += f"<b>📍 Адрес расчетов:</b> {payment_address_back}\n"
             
             edit_message_with_buttons(
                 bot_token,
@@ -1687,6 +1721,23 @@ def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id:
     client_phone = client_data.get('phone')
     if client_phone:
         response_text += f"<b>📱 Телефон:</b> {client_phone}\n"
+    
+    # Company info (SNO and payment address)
+    company_data_preview = receipt_data.get('company', {})
+    sno_preview = company_data_preview.get('sno', 'usn_income')
+    payment_address_preview = company_data_preview.get('payment_address', '')
+    
+    sno_names_preview = {
+        'usn_income': 'УСН доход',
+        'usn_income_outcome': 'УСН доход-расход',
+        'osn': 'ОСНО',
+        'esn': 'ЕСХН',
+        'patent': 'Патент'
+    }
+    
+    response_text += f"\n<b>💼 СНО:</b> {sno_names_preview.get(sno_preview, sno_preview)}\n"
+    if payment_address_preview:
+        response_text += f"<b>📍 Адрес расчетов:</b> {payment_address_preview}\n"
     
     send_telegram_message_with_buttons(
         bot_token,
