@@ -955,6 +955,67 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         
         edit_message_with_buttons(bot_token, chat_id, message_id, group_text, group_buttons)
     
+    elif callback_data.startswith('set_payment_provider_'):
+        print(f"[DEBUG] set_payment_provider_ handler triggered")
+        parts = callback_data.replace('set_payment_provider_', '').split('_')
+        provider_id = parts[0]
+        preview_id = '_'.join(parts[1:])
+        print(f"[DEBUG] Parsed: provider_id={provider_id}, preview_id={preview_id}")
+        
+        preview_data = get_preview_data(preview_id)
+        print(f"[DEBUG] preview_data loaded: {preview_data is not None}")
+        if not preview_data:
+            print(f"[ERROR] No preview_data found for preview_id: {preview_id}")
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
+        
+        user_id = preview_data.get('user_id', '')
+        print(f"[DEBUG] user_id={user_id}")
+        
+        # Load payment providers to get provider name
+        payment_providers = get_payment_providers(user_id)
+        print(f"[DEBUG] payment_providers loaded: {payment_providers is not None}")
+        provider_name = f"Провайдер {provider_id}"
+        
+        if payment_providers:
+            for provider in payment_providers:
+                if str(provider.get('id')) == str(provider_id):
+                    provider_desc = provider.get('description', '')
+                    # Clean provider description
+                    provider_desc = provider_desc.replace('Платёж через счёт ', '')
+                    provider_desc = provider_desc.replace('Платёж через эквайринг ', '')
+                    provider_desc = provider_desc.replace('Платёж через ', '')
+                    provider_desc = provider_desc.replace('"', '')
+                    provider_name = provider_desc
+                    print(f"[DEBUG] Found provider name: {provider_name}")
+                    break
+        
+        print(f"[DEBUG] Final provider_name: {provider_name}")
+        
+        # Update payment provider in preview data with name
+        success = update_preview_payment_provider(preview_id, provider_id, provider_name)
+        print(f"[DEBUG] update_preview_payment_provider returned: {success}")
+        
+        if not success:
+            print(f"[ERROR] Failed to update payment provider")
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка при сохранении провайдера")
+            return create_response({'ok': True})
+        
+        # Return to "Тип документа" menu
+        print(f"[DEBUG] Preparing menu response")
+        group_text = f"📄 <b>Тип документа</b>\n\n✅ Выбран провайдер: <b>{provider_name}</b>\n\nВыбери параметр:"
+        group_buttons = [
+            [{"text": "🧾 Чек", "callback_data": f"show_receipt_{preview_id}"}],
+            [{"text": "🔗 Изменить провайдера", "callback_data": f"edit_payment_link_{preview_id}"}],
+            [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
+            [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+        ]
+        
+        print(f"[DEBUG] Calling edit_message_with_buttons")
+        edit_message_with_buttons(bot_token, chat_id, message_id, group_text, group_buttons)
+        print(f"[DEBUG] edit_message_with_buttons completed")
+        return create_response({'ok': True})
+    
     elif callback_data.startswith('edit_'):
         # General edit handler - shows main edit menu with groups
         preview_id = callback_data.replace('edit_', '')
@@ -1244,67 +1305,6 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         
         callback_query['data'] = f"back_{preview_id}"
         return handle_callback_query(callback_query, bot_token)
-    
-    elif callback_data.startswith('set_payment_provider_'):
-        print(f"[DEBUG] set_payment_provider_ handler triggered")
-        parts = callback_data.replace('set_payment_provider_', '').split('_')
-        provider_id = parts[0]
-        preview_id = '_'.join(parts[1:])
-        print(f"[DEBUG] Parsed: provider_id={provider_id}, preview_id={preview_id}")
-        
-        preview_data = get_preview_data(preview_id)
-        print(f"[DEBUG] preview_data loaded: {preview_data is not None}")
-        if not preview_data:
-            print(f"[ERROR] No preview_data found for preview_id: {preview_id}")
-            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
-            return create_response({'ok': True})
-        
-        user_id = preview_data.get('user_id', '')
-        print(f"[DEBUG] user_id={user_id}")
-        
-        # Load payment providers to get provider name
-        payment_providers = get_payment_providers(user_id)
-        print(f"[DEBUG] payment_providers loaded: {payment_providers is not None}")
-        provider_name = f"Провайдер {provider_id}"
-        
-        if payment_providers:
-            for provider in payment_providers:
-                if str(provider.get('id')) == str(provider_id):
-                    provider_desc = provider.get('description', '')
-                    # Clean provider description
-                    provider_desc = provider_desc.replace('Платёж через счёт ', '')
-                    provider_desc = provider_desc.replace('Платёж через эквайринг ', '')
-                    provider_desc = provider_desc.replace('Платёж через ', '')
-                    provider_desc = provider_desc.replace('"', '')
-                    provider_name = provider_desc
-                    print(f"[DEBUG] Found provider name: {provider_name}")
-                    break
-        
-        print(f"[DEBUG] Final provider_name: {provider_name}")
-        
-        # Update payment provider in preview data with name
-        success = update_preview_payment_provider(preview_id, provider_id, provider_name)
-        print(f"[DEBUG] update_preview_payment_provider returned: {success}")
-        
-        if not success:
-            print(f"[ERROR] Failed to update payment provider")
-            edit_message(bot_token, chat_id, message_id, "❌ Ошибка при сохранении провайдера")
-            return create_response({'ok': True})
-        
-        # Return to "Тип документа" menu
-        print(f"[DEBUG] Preparing menu response")
-        group_text = f"📄 <b>Тип документа</b>\n\n✅ Выбран провайдер: <b>{provider_name}</b>\n\nВыбери параметр:"
-        group_buttons = [
-            [{"text": "🧾 Чек", "callback_data": f"show_receipt_{preview_id}"}],
-            [{"text": "🔗 Изменить провайдера", "callback_data": f"edit_payment_link_{preview_id}"}],
-            [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
-            [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
-        ]
-        
-        print(f"[DEBUG] Calling edit_message_with_buttons")
-        edit_message_with_buttons(bot_token, chat_id, message_id, group_text, group_buttons)
-        print(f"[DEBUG] edit_message_with_buttons completed")
-        return create_response({'ok': True})
     
     return create_response({'ok': True})
 
