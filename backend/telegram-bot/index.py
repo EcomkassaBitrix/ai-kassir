@@ -777,28 +777,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         
         edit_message(bot_token, chat_id, message_id, prompt_text)
     
-    elif callback_data.startswith('edit_'):
-        preview_id = callback_data.replace('edit_', '')
-        preview_data = get_preview_data(preview_id)
-        
-        if not preview_data:
-            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
-            return create_response({'ok': True})
-        
-        # Show main edit menu with groups
-        edit_text = "✏️ <b>Что изменить?</b>\n\nВыбери раздел для редактирования:"
-        
-        edit_buttons = [
-            [{"text": "📄 Тип документа", "callback_data": f"edit_group_doc_{preview_id}"}],
-            [{"text": "🏢 Данные компании", "callback_data": f"edit_group_company_{preview_id}"}],
-            [{"text": "👤 Данные клиента", "callback_data": f"edit_group_client_{preview_id}"}],
-            [{"text": "🛒 Товары и услуги", "callback_data": f"edit_group_items_{preview_id}"}],
-            [{"text": "💳 Способ оплаты", "callback_data": f"edit_group_payment_{preview_id}"}],
-            [{"text": "« Назад к чеку", "callback_data": f"back_{preview_id}"}]
-        ]
-        
-        edit_message_with_buttons(bot_token, chat_id, message_id, edit_text, edit_buttons)
-    
+    # CRITICAL: edit_group_ MUST be checked BEFORE general edit_ to avoid false matches
     elif callback_data.startswith('edit_group_'):
         # Handle group menu selections
         # Format: edit_group_doc_265009146_1764234824 -> group_type=doc, preview_id=265009146_1764234824
@@ -827,10 +806,19 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             group_type = parts[0]
             preview_id = parts[1] if len(parts) > 1 else ''
         
+        print(f"[DEBUG] edit_group_ callback: callback_data='{callback_data}'")
         print(f"[DEBUG] edit_group_ callback: remaining='{remaining}', group_type='{group_type}', preview_id='{preview_id}'")
         
+        if not preview_id:
+            print(f"[ERROR] preview_id is empty! callback_data='{callback_data}', remaining='{remaining}'")
+            edit_message(bot_token, chat_id, message_id, f"❌ Ошибка: не удалось извлечь preview_id из callback_data")
+            return create_response({'ok': True})
+        
         preview_data = get_preview_data(preview_id)
+        print(f"[DEBUG] preview_data retrieved: {preview_data is not None}")
+        
         if not preview_data:
+            print(f"[ERROR] preview_data not found in DB for preview_id: '{preview_id}'")
             edit_message(bot_token, chat_id, message_id, f"❌ Ошибка: данные не найдены (preview_id: {preview_id})")
             return create_response({'ok': True})
         
@@ -883,6 +871,29 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             return create_response({'ok': True})
         
         edit_message_with_buttons(bot_token, chat_id, message_id, group_text, group_buttons)
+    
+    elif callback_data.startswith('edit_'):
+        # General edit handler - shows main edit menu with groups
+        preview_id = callback_data.replace('edit_', '')
+        preview_data = get_preview_data(preview_id)
+        
+        if not preview_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
+        
+        # Show main edit menu with groups
+        edit_text = "✏️ <b>Что изменить?</b>\n\nВыбери раздел для редактирования:"
+        
+        edit_buttons = [
+            [{"text": "📄 Тип документа", "callback_data": f"edit_group_doc_{preview_id}"}],
+            [{"text": "🏢 Данные компании", "callback_data": f"edit_group_company_{preview_id}"}],
+            [{"text": "👤 Данные клиента", "callback_data": f"edit_group_client_{preview_id}"}],
+            [{"text": "🛒 Товары и услуги", "callback_data": f"edit_group_items_{preview_id}"}],
+            [{"text": "💳 Способ оплаты", "callback_data": f"edit_group_payment_{preview_id}"}],
+            [{"text": "« Назад к чеку", "callback_data": f"back_{preview_id}"}]
+        ]
+        
+        edit_message_with_buttons(bot_token, chat_id, message_id, edit_text, edit_buttons)
     
     elif callback_data.startswith('back_'):
         preview_id = callback_data.replace('back_', '')
