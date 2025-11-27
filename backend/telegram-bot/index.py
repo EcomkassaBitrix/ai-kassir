@@ -364,11 +364,21 @@ def send_telegram_message_with_buttons(bot_token: str, chat_id: int, text: str, 
 def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = False) -> Dict[str, Any]:
     process_receipt_url = 'https://functions.poehali.dev/734da785-2867-4c5d-b20c-90fc6d86b11c'
     
+    # CRITICAL: Auto-detect document type from keywords
+    # Keywords for payment link: ссылка, платеж, QR, эквайринг, СБП
+    # Default: чек (receipt)
+    message_lower = user_message.lower()
+    link_keywords = ['ссылк', 'платеж', 'qr', 'эквайринг', 'сбп', 'оплат']  # Partial match
+    document_type = 'link' if any(kw in message_lower for kw in link_keywords) else 'receipt'
+    
+    print(f"[DEBUG] Auto-detected document_type: {document_type} from message: {user_message[:50]}...")
+    
     payload = {
         'message': user_message,
         'operation_type': 'Приход',
         'preview_only': preview_only,
         'external_id': f"TG_{int(datetime.now().timestamp())}",
+        'document_type': document_type,  # CRITICAL: Pass document type to backend
         'settings': {}
     }
     
@@ -418,11 +428,16 @@ def process_receipt_ai_with_edited_data(receipt_data: dict, user_id: str) -> Dic
     # Extract operation_type from receipt_data or default to 'sell'
     operation_type = receipt_data.get('operation_type', 'sell')
     
+    # CRITICAL: Detect document type from payment_link_enabled flag
+    document_type = 'link' if receipt_data.get('payment_link_enabled') else 'receipt'
+    print(f"[DEBUG] Document type from receipt_data: {document_type}")
+    
     payload = {
         'message': 'Edited receipt from Telegram',  # Dummy message, not used
         'operation_type': operation_type,
         'preview_only': False,  # Send to Ecomkassa
         'edited_data': receipt_data,  # CRITICAL: Pass edited receipt directly
+        'document_type': document_type,  # CRITICAL: Pass document type
         'settings': {}
     }
     

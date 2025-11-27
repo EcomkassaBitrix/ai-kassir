@@ -342,10 +342,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     user_message: str = body_data.get('message', '')
     operation_type: str = body_data.get('operation_type', '')
     preview_only: bool = body_data.get('preview_only', False)
+    document_type: str = body_data.get('document_type', 'receipt')  # CRITICAL: 'receipt' or 'link'
     settings: dict = body_data.get('settings', {})
     previous_receipt: dict = body_data.get('previous_receipt', {})
     edited_data: dict = body_data.get('edited_data')
     context_message: str = body_data.get('context_message', '')
+    
+    print(f"[DEBUG] document_type: {document_type}, preview_only: {preview_only}")
     
     # Load user settings from database if user_id is provided
     if user_id:
@@ -877,6 +880,29 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'total_failed': len(failed_receipts)
             })
         }
+    
+    # CRITICAL: Check payment_provider_id for document_type='link'
+    if document_type == 'link':
+        payment_provider_id = parsed_receipt.get('payment_provider_id')
+        payment_link_enabled = parsed_receipt.get('payment_link_enabled', False)
+        
+        # Check if payment provider is selected
+        if not payment_link_enabled or not payment_provider_id:
+            print(f"[ERROR] Payment link requested but provider not selected. payment_link_enabled={payment_link_enabled}, payment_provider_id={payment_provider_id}")
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'isBase64Encoded': False,
+                'body': json.dumps({
+                    'success': False,
+                    'error': '⚠️ Для платежной ссылки необходимо выбрать платежного провайдера.\n\nНажми "Изменить" → "Документ и оплата" → "Способ оплаты" и выбери провайдера (Сбербанк, ЮКасса и т.д.)'
+                })
+            }
+        
+        print(f"[DEBUG] Payment link validation passed: provider_id={payment_provider_id}")
     
     receipt_result = create_ecomkassa_receipt(
         parsed_receipt, 
