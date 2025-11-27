@@ -784,12 +784,16 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
     
     elif callback_data.startswith('edit_group_'):
         # Handle group menu selections
-        group_type = callback_data.replace('edit_group_', '').split('_')[0]
-        preview_id = '_'.join(callback_data.replace('edit_group_', '').split('_')[1:])
+        # Format: edit_group_doc_265009146_1764234824 -> group_type=doc, preview_id=265009146_1764234824
+        parts = callback_data.replace('edit_group_', '').split('_', 1)  # Split only on first underscore
+        group_type = parts[0]
+        preview_id = parts[1] if len(parts) > 1 else ''
+        
+        print(f"[DEBUG] edit_group_ callback: group_type='{group_type}', preview_id='{preview_id}'")
         
         preview_data = get_preview_data(preview_id)
         if not preview_data:
-            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            edit_message(bot_token, chat_id, message_id, f"❌ Ошибка: данные не найдены (preview_id: {preview_id})")
             return create_response({'ok': True})
         
         if group_type == 'doc':
