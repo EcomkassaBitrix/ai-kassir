@@ -176,20 +176,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     available_providers = [
         {
-            'id': 'gigachat',
-            'name': 'GigaChat (Сбер)',
-            'description': 'Российская модель от Сбера',
-            'secret_name': 'GIGACHAT_AUTH_KEY',
-            'has_secret': bool(os.environ.get('GIGACHAT_AUTH_KEY'))
-        },
-        {
-            'id': 'yandexgpt',
-            'name': 'YandexGPT',
-            'description': 'Российская модель от Яндекса',
-            'secret_name': 'YANDEXGPT_API_KEY',
-            'has_secret': bool(os.environ.get('YANDEXGPT_API_KEY')) and bool(os.environ.get('YANDEXGPT_FOLDER_ID'))
-        },
-        {
             'id': 'gptunnel_chatgpt',
             'name': 'GPTunnel (мультимодели)',
             'description': 'Доступ к GPT, DeepSeek, Gemini и другим моделям',
