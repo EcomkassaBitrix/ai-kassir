@@ -316,6 +316,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         else:
             if provider_id == 'yandex_speechkit':
                 cur.execute("UPDATE ai_settings SET active_provider = %s, selected_model = %s, yandex_speechkit_key = %s, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM ai_settings ORDER BY id LIMIT 1)", (provider_id, None, yandex_speechkit_key))
+            elif not provider_id:
+                # При отключении провайдера - удаляем ключ Yandex SpeechKit
+                cur.execute("UPDATE ai_settings SET active_provider = '', selected_model = NULL, yandex_speechkit_key = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM ai_settings ORDER BY id LIMIT 1)")
             else:
                 cur.execute("UPDATE ai_settings SET active_provider = %s, selected_model = %s, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM ai_settings ORDER BY id LIMIT 1)", (provider_id, selected_model))
         

@@ -107,6 +107,7 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
       if (isValid) {
         setActiveProvider('');
         setSelectedModel(null);
+        setYandexSpeechKitKey(''); // Очищаем ключ при отключении
         toast.success('Провайдер отключен');
         await loadSettings();
       }
@@ -118,17 +119,8 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
       setModelSelectMode(true);
       await loadSettings();
     } else if (providerId === 'yandex_speechkit') {
-      // Если ключ уже сохранён, активируем сразу, иначе показываем форму
-      if (yandexSpeechKitKey) {
-        const isValid = await validateKey('yandex_speechkit', undefined, yandexSpeechKitKey);
-        if (isValid) {
-          setActiveProvider('yandex_speechkit');
-          toast.success('Yandex SpeechKit активирован ✓');
-          await loadSettings();
-        }
-      } else {
-        setShowKeyInput(true);
-      }
+      // Всегда показываем форму ввода ключа
+      setShowKeyInput(true);
     } else {
       const isValid = await validateKey(providerId);
       
@@ -380,11 +372,6 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold text-white">{provider.name}</h3>
-                  {yandexSpeechKitKey && (
-                    <span className="text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded-full">
-                      Ключ сохранён
-                    </span>
-                  )}
                 </div>
                 <p className="text-sm text-gray-400 mt-1">{provider.description}</p>
               </div>
@@ -394,7 +381,7 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
                 onClick={() => handleProviderChange(provider.id)}
                 className="bg-transparent border-gray-600 text-gray-300 hover:bg-gray-800"
               >
-                {yandexSpeechKitKey ? 'Включить' : 'Настроить'}
+                Настроить
               </Button>
             </div>
           );
