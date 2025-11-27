@@ -163,9 +163,22 @@ export const ChatMessage = ({
                     </div>
                   </div>
                   <div className="bg-accent/5 p-3 rounded-lg space-y-2">
-                    <div className="text-xs font-semibold flex items-center gap-2">
-                      <Icon name="Link" size={14} />
-                      <span>Ссылка на оплату:</span>
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-semibold flex items-center gap-2">
+                        <Icon name="Link" size={14} />
+                        <span>Ссылка на оплату:</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(message.paymentLink || '');
+                          toast.success('Ссылка скопирована!');
+                        }}
+                        className="h-7 px-2 text-xs"
+                      >
+                        <Icon name="Copy" size={14} />
+                      </Button>
                     </div>
                     <a 
                       href={message.paymentLink} 
