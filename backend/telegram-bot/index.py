@@ -350,9 +350,36 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 # Payment object names
                 object_names = {
                     'commodity': 'Товар',
-                    'service': 'Услуга',
                     'excise': 'Подакцизный товар',
-                    'job': 'Работа'
+                    'job': 'Работа',
+                    'service': 'Услуга',
+                    'payment_gambling': 'Ставка азартной игры',
+                    'gambling_prize': 'Выигрыш азартной игры',
+                    'lottery': 'Лотерейный билет',
+                    'lottery_prize': 'Выигрыш лотереи',
+                    'intellectual_property': 'РИД',
+                    'advance': 'Аванс/Задаток',
+                    'agent_commission': 'Агентское вознаграждение',
+                    'composite': 'Составной предмет',
+                    'another': 'Иной предмет',
+                    'property_right': 'Имущественное право',
+                    'non_operating_income': 'Внереализационный доход',
+                    'insurance_premium': 'Страховые взносы',
+                    'sales_tax': 'Торговый сбор',
+                    'resort_fee': 'Курортный сбор',
+                    'deposit': 'Залог',
+                    'expense': 'Расход',
+                    'pension_insurance_ip': 'Взносы ИП (ОПС)',
+                    'pension_insurance': 'Взносы на ОПС',
+                    'medical_insurance_ip': 'Взносы ИП (ОМС)',
+                    'medical_insurance': 'Взносы на ОМС',
+                    'social_insurance': 'Взносы на ОСС',
+                    'casino_payment': 'Казино',
+                    'agent_payment': 'Выдача ДС',
+                    'excisable_goods_without_marking': 'Подакцизный без маркировки',
+                    'excisable_goods_with_marking': 'Подакцизный с маркировкой',
+                    'goods_without_marking': 'Товар без маркировки',
+                    'goods_with_marking': 'Товар с маркировкой'
                 }
                 
                 response_text += f"\n<b>{idx}. {name}</b>\n"
@@ -1027,8 +1054,14 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             
             object_buttons = [
                 [{"text": "Товар", "callback_data": f"set_payment_object_commodity_{preview_id}"}],
-                [{"text": "Услуга", "callback_data": f"set_payment_object_service_{preview_id}"}],
+                [{"text": "Подакцизный товар", "callback_data": f"set_payment_object_excise_{preview_id}"}],
                 [{"text": "Работа", "callback_data": f"set_payment_object_job_{preview_id}"}],
+                [{"text": "Услуга", "callback_data": f"set_payment_object_service_{preview_id}"}],
+                [{"text": "Аванс/Задаток", "callback_data": f"set_payment_object_advance_{preview_id}"}],
+                [{"text": "РИД", "callback_data": f"set_payment_object_intellectual_property_{preview_id}"}],
+                [{"text": "Имущественное право", "callback_data": f"set_payment_object_property_right_{preview_id}"}],
+                [{"text": "Составной предмет", "callback_data": f"set_payment_object_composite_{preview_id}"}],
+                [{"text": "Иной предмет", "callback_data": f"set_payment_object_another_{preview_id}"}],
                 [{"text": "« Назад", "callback_data": f"edit_group_items_{preview_id}"}]
             ]
             
@@ -1474,7 +1507,17 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
                     'credit': 'Кредит',
                     'credit_payment': 'Оплата кредита'
                 }
-                object_names = {'commodity': 'Товар', 'service': 'Услуга', 'excise': 'Подакцизный товар', 'job': 'Работа'}
+                object_names = {
+                    'commodity': 'Товар',
+                    'excise': 'Подакцизный товар',
+                    'job': 'Работа',
+                    'service': 'Услуга',
+                    'advance': 'Аванс/Задаток',
+                    'intellectual_property': 'РИД',
+                    'property_right': 'Имущественное право',
+                    'composite': 'Составной предмет',
+                    'another': 'Иной предмет'
+                }
                 
                 response_text += f"\n<b>{idx}. {name}</b>\n"
                 response_text += f"   Цена: {price}₽ × {qty} {measure}\n"
@@ -1625,7 +1668,17 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         
         update_preview_field_value(preview_id, 'payment_object', payment_object)
         
-        object_names = {'commodity': 'Товар', 'service': 'Услуга', 'job': 'Работа'}
+        object_names = {
+            'commodity': 'Товар',
+            'excise': 'Подакцизный товар',
+            'job': 'Работа',
+            'service': 'Услуга',
+            'advance': 'Аванс/Задаток',
+            'intellectual_property': 'РИД',
+            'property_right': 'Имущественное право',
+            'composite': 'Составной предмет',
+            'another': 'Иной предмет'
+        }
         edit_message(bot_token, chat_id, message_id, f"✅ Предмет расчета изменен на: {object_names.get(payment_object, payment_object)}\n\nВозвращаю к чеку...")
         
         import time
