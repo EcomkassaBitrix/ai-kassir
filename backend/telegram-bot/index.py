@@ -781,7 +781,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         if receipt_data:
             print(f"[DEBUG] Using edited receipt_data from preview")
             # Send edited receipt directly to process-receipt with edited_data flag
-            receipt_result = process_receipt_ai_with_edited_data(receipt_data, user_id)
+            receipt_result = process_receipt_ai_with_edited_data(user_message, user_id, receipt_data, chat_id)
         else:
             print(f"[DEBUG] No receipt_data in preview, parsing from text")
             # Fallback: parse from original message

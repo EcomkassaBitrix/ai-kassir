@@ -851,18 +851,26 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     invalid_emails = ['customer@example.com', 'НЕ УКАЗАН email', 'email@example.com', '']
     if not client_email or client_email in invalid_emails or '@' not in client_email or '.' not in client_email:
-        return {
-            'statusCode': 400,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps({
-                'error': 'Не указан email клиента',
-                'message': 'Укажи email клиента в сообщении или добавь company_email в настройках',
-                'missing_field': 'email'
-            })
-        }
+        # Try to use company_email as fallback
+        company_email = settings.get('company_email', '')
+        print(f"[DEBUG] client_email invalid, trying company_email: '{company_email}'")
+        
+        if company_email and '@' in company_email and '.' in company_email:
+            print(f"[DEBUG] Using company_email as fallback")
+            parsed_receipt.setdefault('client', {})['email'] = company_email
+        else:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({
+                    'error': 'Не указан email клиента',
+                    'message': 'Укажи email клиента в сообщении или добавь company_email в настройках',
+                    'missing_field': 'email'
+                })
+            }
     
     login = settings.get('ecomkassa_login') or os.environ.get('ECOMKASSA_LOGIN', '')
     password = settings.get('ecomkassa_password') or os.environ.get('ECOMKASSA_PASSWORD', '')
