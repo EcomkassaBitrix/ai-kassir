@@ -630,7 +630,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         delete_preview_data(preview_id)
     
     # CRITICAL: Check specific edit_* patterns BEFORE general edit_
-    elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_measure_') or callback_data.startswith('edit_vat_') or callback_data.startswith('edit_payment_object_') or callback_data.startswith('edit_payment_method_') or callback_data.startswith('edit_payment_type_') or callback_data.startswith('edit_payment_sum_') or callback_data.startswith('edit_sno_') or callback_data.startswith('edit_payment_address_') or callback_data.startswith('edit_payment_link_') or callback_data.startswith('edit_operation_type_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
+    elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_measure_') or callback_data.startswith('edit_vat_') or callback_data.startswith('edit_payment_object_') or callback_data.startswith('edit_payment_method_') or callback_data.startswith('edit_payment_type_') or callback_data.startswith('edit_payment_sum_') or callback_data.startswith('edit_sno_') or callback_data.startswith('edit_payment_address_') or callback_data.startswith('edit_operation_type_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
         # Extract field type and preview_id
         print(f"[DEBUG] Edit field button clicked! callback_data: {callback_data}")
         if callback_data.startswith('edit_item_'):
@@ -805,14 +805,37 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         edit_message_with_buttons(bot_token, chat_id, message_id, receipt_text, back_buttons)
     
     elif callback_data.startswith('edit_payment_link_'):
-        # Edit payment link
+        # Edit payment link - show payment providers
         preview_id = callback_data.replace('edit_payment_link_', '')
-        field = 'payment_link'
+        preview_data = get_preview_data(preview_id)
         
-        prompt_text = "🔗 <b>Изменить ссылку на оплату</b>\n\nОтправь новую ссылку текстом.\n\nНапример: <code>https://payment.example.com/123</code>"
+        if not preview_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
         
-        save_editing_state(preview_id, field)
-        edit_message(bot_token, chat_id, message_id, prompt_text)
+        user_id = preview_data.get('user_id', '')
+        
+        # Load payment providers from Ecomkassa API
+        payment_providers = get_payment_providers(user_id)
+        
+        if not payment_providers:
+            edit_message(bot_token, chat_id, message_id, "❌ Не удалось загрузить список платежных провайдеров. Проверь настройки ЕкомКасса.")
+            return create_response({'ok': True})
+        
+        prompt_text = "🔗 <b>Выбери платежного провайдера:</b>\n\nДля создания чека со ссылкой на оплату"
+        
+        provider_buttons = []
+        for provider in payment_providers:
+            provider_id = provider.get('id')
+            provider_desc = provider.get('description', f'Провайдер {provider_id}')
+            provider_buttons.append([{
+                "text": provider_desc,
+                "callback_data": f"set_payment_provider_{provider_id}_{preview_id}"
+            }])
+        
+        provider_buttons.append([{"text": "« Назад", "callback_data": f"edit_group_doc_{preview_id}"}])
+        
+        edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, provider_buttons)
     
     # CRITICAL: edit_group_ MUST be checked BEFORE general edit_ to avoid false matches
     elif callback_data.startswith('edit_group_'):
@@ -1188,6 +1211,26 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             'patent': 'Патент'
         }
         edit_message(bot_token, chat_id, message_id, f"✅ СНО изменена на: {sno_names.get(sno, sno)}\n\nВозвращаю к чеку...")
+        
+        import time
+        time.sleep(1)
+        
+        callback_query['data'] = f"back_{preview_id}"
+        return handle_callback_query(callback_query, bot_token)
+    
+    elif callback_data.startswith('set_payment_provider_'):
+        parts = callback_data.replace('set_payment_provider_', '').split('_')
+        provider_id = parts[0]
+        preview_id = '_'.join(parts[1:])
+        
+        preview_data = get_preview_data(preview_id)
+        if not preview_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
+        
+        update_preview_payment_provider(preview_id, provider_id)
+        
+        edit_message(bot_token, chat_id, message_id, f"✅ Платежный провайдер установлен (ID: {provider_id})\n\nЧек будет создан со ссылкой на оплату.\n\nВозвращаю к чеку...")
         
         import time
         time.sleep(1)
@@ -1689,12 +1732,6 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
                 receipt_data['company'] = {}
             receipt_data['company']['payment_address'] = new_value
             print(f"[DEBUG] Updated payment_address to: {new_value}")
-        elif field == 'payment_link':
-            if 'payment_link' not in receipt_data:
-                receipt_data['payment_link'] = new_value
-            else:
-                receipt_data['payment_link'] = new_value
-            print(f"[DEBUG] Updated payment_link to: {new_value}")
         else:
             print(f"[ERROR] Unknown field: {field}")
             return False
@@ -1886,6 +1923,61 @@ def get_bot_token() -> str:
         return default_token
 
 
+def get_payment_providers(user_id: str) -> Optional[list]:
+    '''Load payment providers from Ecomkassa API'''
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return None
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT ecomkassa_login, ecomkassa_password, group_code FROM user_settings WHERE user_id = %s LIMIT 1",
+            (user_id,)
+        )
+        
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not row:
+            print(f"[ERROR] No user settings found for user_id: {user_id}")
+            return None
+        
+        login, password, group_code = row
+        
+        if not (login and password and group_code):
+            print(f"[ERROR] Missing ecomkassa credentials for user_id: {user_id}")
+            return None
+        
+        token = get_ecomkassa_token(login, password)
+        if not token:
+            print(f"[ERROR] Failed to get ecomkassa token")
+            return None
+        
+        api_url = f'https://app.ecomkassa.ru/fiscalorder/v4/{group_code}/paymentTypes'
+        
+        req = urllib.request.Request(
+            api_url,
+            headers={
+                'Content-Type': 'application/json',
+                'Token': token
+            },
+            method='GET'
+        )
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            providers = json.loads(response.read().decode('utf-8'))
+            print(f"[DEBUG] Loaded {len(providers)} payment providers")
+            return providers
+    
+    except Exception as e:
+        print(f"[ERROR] Failed to load payment providers: {e}")
+        return None
+
+
 def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
     '''
     Download voice message and transcribe using Yandex SpeechKit
@@ -2012,6 +2104,53 @@ def update_preview_payment(preview_id: str, payment_type: str) -> bool:
         
     except Exception as e:
         print(f"[ERROR] Failed to update preview payment: {str(e)}")
+        return False
+
+
+def update_preview_payment_provider(preview_id: str, provider_id: str) -> bool:
+    """Update payment provider in telegram_previews receipt_data"""
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return False
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT receipt_data FROM telegram_previews WHERE preview_id = %s",
+            (preview_id,)
+        )
+        result = cur.fetchone()
+        
+        if not result or not result[0]:
+            print(f"[ERROR] No receipt_data found for preview_id: {preview_id}")
+            cur.close()
+            conn.close()
+            return False
+        
+        receipt_data = result[0]
+        
+        if 'payments' in receipt_data and len(receipt_data['payments']) > 0:
+            receipt_data['payments'][0]['type'] = int(provider_id)
+            print(f"[DEBUG] Updated payment provider to {provider_id}")
+        
+        receipt_data['payment_link_enabled'] = True
+        
+        cur.execute(
+            "UPDATE telegram_previews SET receipt_data = %s WHERE preview_id = %s",
+            (json.dumps(receipt_data), preview_id)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print(f"[SUCCESS] Updated payment provider for preview {preview_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to update payment provider: {str(e)}")
         return False
 
 
