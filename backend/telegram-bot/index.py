@@ -1931,6 +1931,40 @@ def get_bot_token() -> str:
         return default_token
 
 
+def get_ecomkassa_token(login: str, password: str) -> Optional[str]:
+    '''Get Ecomkassa API token'''
+    auth_url = 'https://app.ecomkassa.ru/fiscalorder/v5/getToken'
+    
+    payload = {
+        'login': login,
+        'pass': password
+    }
+    
+    try:
+        req = urllib.request.Request(
+            auth_url,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={'Content-Type': 'application/json; charset=utf-8'},
+            method='POST'
+        )
+        
+        print(f"[DEBUG] Getting token for login: {login[:3]}***")
+        with urllib.request.urlopen(req, timeout=10) as response:
+            response_data = json.loads(response.read().decode('utf-8'))
+            print(f"[DEBUG] Token response code: {response_data.get('code')}")
+            if response_data.get('code') == 0:
+                token = response_data.get('token')
+                print(f"[DEBUG] Token received: {token[:50] if token else 'None'}...")
+                return token
+            else:
+                print(f"[DEBUG] Token error: {response_data.get('text')}")
+                return None
+    
+    except Exception as e:
+        print(f"[DEBUG] Exception getting token: {str(e)}")
+        return None
+
+
 def get_payment_providers(user_id: str) -> Optional[list]:
     '''Load payment providers from Ecomkassa API'''
     dsn = os.environ.get('DATABASE_URL')
