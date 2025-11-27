@@ -796,6 +796,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'message': 'Предпросмотр чека',
                 'receipt': parsed_receipt,
                 'operation_type': operation_type,
+                'document_type': document_type,  # CRITICAL: Pass document type to telegram-bot
                 'preview': True
             })
         }

@@ -186,6 +186,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             payments = receipt_data.get('payments', [])
             client_data = receipt_data.get('client', {})
             operation_type = preview_result.get('operation_type', 'sell')
+            document_type = preview_result.get('document_type', 'receipt')  # CRITICAL: Get document type from backend
             
             # Operation type names
             operation_names = {
@@ -195,9 +196,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'refund_correction': '📝 Коррекция расхода'
             }
             
-            # CRITICAL: Detect document type from receipt_data
+            # CRITICAL: Detect document type from backend response OR receipt_data
             payment_link_enabled = receipt_data.get('payment_link_enabled', False)
-            document_type_text = "🔗 Платежная ссылка" if payment_link_enabled else "🧾 Чек"
+            is_payment_link = (document_type == 'link') or payment_link_enabled
+            document_type_text = "🔗 Платежная ссылка" if is_payment_link else "🧾 Чек"
+            
+            print(f"[DEBUG] document_type={document_type}, payment_link_enabled={payment_link_enabled}, is_payment_link={is_payment_link}")
             
             response_text = "📋 <b>Проверь перед отправкой:</b>\n\n"
             response_text += f"<b>Тип документа:</b> {document_type_text}\n"
