@@ -431,35 +431,36 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             import psycopg2
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            cur.execute("SELECT active_provider FROM ai_settings ORDER BY id DESC LIMIT 1")
+            # CRITICAL: Use text_provider and gptunnel_api_key from DB (after migration V0014)
+            cur.execute("SELECT text_provider, selected_model, gptunnel_api_key FROM ai_settings ORDER BY id DESC LIMIT 1")
             row = cur.fetchone()
             if row and row[0]:
                 active_ai_provider = row[0]
-                # Check if corresponding environment variable exists
-                if active_ai_provider == 'gigachat':
-                    has_admin_ai = bool(os.environ.get('GIGACHAT_AUTH_KEY'))
-                elif active_ai_provider == 'yandexgpt':
-                    has_admin_ai = bool(os.environ.get('YANDEXGPT_API_KEY'))
-                elif active_ai_provider == 'gptunnel_chatgpt':
-                    has_admin_ai = bool(os.environ.get('GPTUNNEL_API_KEY'))
+                selected_model = row[1] if len(row) > 1 else None
+                gptunnel_api_key = row[2] if len(row) > 2 else None
                 
-                # Pass admin AI settings to the function
-                if has_admin_ai:
-                    if active_ai_provider == 'gigachat':
-                        settings['gigachat_auth_key'] = os.environ.get('GIGACHAT_AUTH_KEY')
+                # GPTunnel uses API key from database
+                if active_ai_provider == 'gptunnel_chatgpt':
+                    if gptunnel_api_key:
+                        has_admin_ai = True
+                        settings['gptunnel_api_key'] = gptunnel_api_key
+                        settings['active_ai_provider'] = 'gptunnel_chatgpt'
+                        if selected_model:
+                            settings['gptunnel_model'] = selected_model
+                # Legacy providers (GigaChat, YandexGPT) - still use environment
+                elif active_ai_provider == 'gigachat':
+                    gigachat_key = os.environ.get('GIGACHAT_AUTH_KEY')
+                    if gigachat_key:
+                        has_admin_ai = True
+                        settings['gigachat_auth_key'] = gigachat_key
                         settings['active_ai_provider'] = 'gigachat'
-                    elif active_ai_provider == 'yandexgpt':
-                        settings['yandexgpt_api_key'] = os.environ.get('YANDEXGPT_API_KEY')
+                elif active_ai_provider == 'yandexgpt':
+                    yandexgpt_key = os.environ.get('YANDEXGPT_API_KEY')
+                    if yandexgpt_key:
+                        has_admin_ai = True
+                        settings['yandexgpt_api_key'] = yandexgpt_key
                         settings['yandexgpt_folder_id'] = os.environ.get('YANDEXGPT_FOLDER_ID', '')
                         settings['active_ai_provider'] = 'yandexgpt'
-                    elif active_ai_provider == 'gptunnel_chatgpt':
-                        settings['gptunnel_api_key'] = os.environ.get('GPTUNNEL_API_KEY')
-                        settings['active_ai_provider'] = 'gptunnel_chatgpt'
-                        # Get selected model
-                        cur.execute("SELECT selected_model FROM ai_settings ORDER BY id DESC LIMIT 1")
-                        model_row = cur.fetchone()
-                        if model_row and model_row[0]:
-                            settings['gptunnel_model'] = model_row[0]
             cur.close()
             conn.close()
         except Exception as e:
