@@ -502,7 +502,10 @@ def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = Fal
     
     # CRITICAL: Auto-detect payment provider from keywords
     # Provider keywords mapping (partial match, case-insensitive)
+    # ВАЖНО: Более специфичные ключевые слова должны проверяться первыми
     provider_keywords = {
+        'точка_сбп': ['точка сбп', 'сбп точка'],  # Специфичный вариант для СБП
+        'точка_эквайринг': ['точка эквайринг', 'эквайринг точка', 'точка acquiring'],  # Специфичный для эквайринга
         'сбербанк': ['сбербанк', 'sberbank', 'сбер'],
         'юкасса': ['юкасса', 'юкасс', 'yookassa', 'юкаса'],
         'тинькофф': ['тинькофф', 'тиньков', 'tinkoff', 'tcs'],
@@ -516,11 +519,17 @@ def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = Fal
     }
     
     detected_provider_name = None
+    # Проверяем специфичные ключевые слова первыми (точка сбп, точка эквайринг)
     for provider_name, keywords in provider_keywords.items():
         if any(kw in message_lower for kw in keywords):
             detected_provider_name = provider_name
             print(f"[DEBUG] Auto-detected payment provider: {provider_name}")
             break
+    
+    # Если не нашли специфичный вариант, проверяем общее слово "точка"
+    if not detected_provider_name and 'точка' in message_lower:
+        detected_provider_name = 'точка'
+        print(f"[DEBUG] Auto-detected generic 'точка' provider")
     
     # CRITICAL: If provider detected, force document_type to 'link'
     if detected_provider_name:
@@ -532,27 +541,74 @@ def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = Fal
     if detected_provider_name:
         user_providers = get_payment_providers(user_id)
         if user_providers:
+            # Собираем все провайдеры с "точка" в названии
+            tochka_providers = []
+            
             # Match detected provider name with user's available providers
             for provider in user_providers:
                 provider_desc = provider.get('description', '').lower()
                 provider_id = provider.get('id')
                 
-                # Check if any keyword matches the provider description
-                for keyword in provider_keywords.get(detected_provider_name, []):
-                    if keyword in provider_desc:
-                        auto_selected_provider = {
-                            'id': provider_id,
-                            'name': provider.get('description', f'Провайдер {provider_id}'),
-                            'detected_keyword': detected_provider_name
-                        }
-                        print(f"[DEBUG] Matched provider: id={provider_id}, name={auto_selected_provider['name']}")
+                # CRITICAL: Для специфичных вариантов (точка_сбп, точка_эквайринг)
+                if detected_provider_name in ['точка_сбп', 'точка_эквайринг']:
+                    # Ищем точное совпадение
+                    for keyword in provider_keywords.get(detected_provider_name, []):
+                        if keyword in provider_desc:
+                            auto_selected_provider = {
+                                'id': provider_id,
+                                'name': provider.get('description', f'Провайдер {provider_id}'),
+                                'detected_keyword': detected_provider_name
+                            }
+                            print(f"[DEBUG] Matched specific provider: id={provider_id}, name={auto_selected_provider['name']}")
+                            break
+                    
+                    if auto_selected_provider:
                         break
                 
-                if auto_selected_provider:
-                    break
+                # Для общего "точка" - собираем все варианты
+                elif detected_provider_name == 'точка':
+                    if 'точка' in provider_desc:
+                        tochka_providers.append({
+                            'id': provider_id,
+                            'name': provider.get('description', f'Провайдер {provider_id}'),
+                            'description': provider_desc
+                        })
+                
+                # Для остальных провайдеров - обычное сопоставление
+                else:
+                    for keyword in provider_keywords.get(detected_provider_name, []):
+                        if keyword in provider_desc:
+                            auto_selected_provider = {
+                                'id': provider_id,
+                                'name': provider.get('description', f'Провайдер {provider_id}'),
+                                'detected_keyword': detected_provider_name
+                            }
+                            print(f"[DEBUG] Matched provider: id={provider_id}, name={auto_selected_provider['name']}")
+                            break
+                    
+                    if auto_selected_provider:
+                        break
+            
+            # CRITICAL: Если "точка" общая и найдено несколько провайдеров - НЕ выбираем автоматически
+            if detected_provider_name == 'точка':
+                if len(tochka_providers) == 1:
+                    # Только один провайдер Точка - выбираем его
+                    auto_selected_provider = {
+                        'id': tochka_providers[0]['id'],
+                        'name': tochka_providers[0]['name'],
+                        'detected_keyword': 'точка'
+                    }
+                    print(f"[DEBUG] Single Tochka provider found, auto-selecting: {auto_selected_provider['name']}")
+                elif len(tochka_providers) > 1:
+                    # Несколько провайдеров Точка - НЕ выбираем, пользователь должен уточнить
+                    print(f"[DEBUG] Multiple Tochka providers found ({len(tochka_providers)}), need user clarification")
+                    detected_provider_name = 'точка_multiple'  # Маркер для показа ошибки
+                else:
+                    # Провайдеры Точка не найдены
+                    print(f"[DEBUG] No Tochka providers found")
             
             # If provider keyword found but not available for user
-            if not auto_selected_provider:
+            if not auto_selected_provider and detected_provider_name not in ['точка', 'точка_multiple']:
                 print(f"[WARN] Provider '{detected_provider_name}' requested but not available for user {user_id}")
         else:
             print(f"[WARN] Could not load providers for user {user_id}")

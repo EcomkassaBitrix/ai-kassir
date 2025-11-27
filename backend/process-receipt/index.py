@@ -129,6 +129,8 @@ client: email (проверь формат), phone (+7...), МОЖНО null ес
 - "товар 1000₽, 600 наличными остальное картой" → {{"operation_type":"sell","items":[{{"name":"товар","price":1000,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"0","sum":600}},{{"type":"1","sum":400}}]}}
 - "стрижка и укладка 2500₽" → {{"operation_type":"sell","items":[{{"name":"стрижка и укладка","price":2500,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":2500}}]}}
 - "кофе 10 руб ссылка точка" → {{"operation_type":"sell","items":[{{"name":"кофе","price":10,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":10}}]}}
+- "кофе 10 руб ссылка точка СБП" → {{"operation_type":"sell","items":[{{"name":"кофе","price":10,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":10}}]}}
+- "кофе 10 руб ссылка точка эквайринг" → {{"operation_type":"sell","items":[{{"name":"кофе","price":10,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":10}}]}}
 - "кофе" → {{"error":"Укажи цену. Email необязателен (будет дефолтный). Пример: кофе 200₽"}}
 - "стрижка test@mail.ru" → {{"error":"Укажи цену услуги. Пример: стрижка 1500₽ test@mail.ru"}}
 - "изготовление шкафа" → {{"error":"Укажи цену. Пример: изготовление шкафа 25000₽"}}
@@ -804,6 +806,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             })
         }
     
+    # CRITICAL: Special case - multiple "Точка" providers detected
+    if detected_provider_keyword == 'точка_multiple' and document_type == 'link':
+        return {
+            'statusCode': 400,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({
+                'success': False,
+                'message': '⚠️ У тебя подключено несколько провайдеров Точка.\n\nУточни какой именно нужен:\n• "кофе 10₽ ссылка точка СБП"\n• "кофе 10₽ ссылка точка эквайринг"\n\nИли нажми "Изменить" → "Тип документа" → "Изменить провайдера" и выбери нужный.'
+            })
+        }
+    
     # CRITICAL: If provider keyword detected but provider not available, show error
     if detected_provider_keyword and document_type == 'link' and not auto_selected_provider:
         provider_name_ru = {
@@ -816,7 +832,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'газпромбанк': 'Газпромбанк',
             'россельхозбанк': 'Россельхозбанк',
             'открытие': 'Открытие',
-            'промсвязьбанк': 'Промсвязьбанк'
+            'промсвязьбанк': 'Промсвязьбанк',
+            'точка_сбп': 'Точка СБП',
+            'точка_эквайринг': 'Точка эквайринг'
         }.get(detected_provider_keyword, detected_provider_keyword.capitalize())
         
         return {
