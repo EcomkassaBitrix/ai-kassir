@@ -630,7 +630,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         delete_preview_data(preview_id)
     
     # CRITICAL: Check specific edit_* patterns BEFORE general edit_
-    elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_measure_') or callback_data.startswith('edit_vat_') or callback_data.startswith('edit_payment_object_') or callback_data.startswith('edit_payment_method_') or callback_data.startswith('edit_payment_type_') or callback_data.startswith('edit_payment_sum_') or callback_data.startswith('edit_sno_') or callback_data.startswith('edit_payment_address_') or callback_data.startswith('edit_operation_type_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
+    elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_measure_') or callback_data.startswith('edit_vat_') or callback_data.startswith('edit_payment_object_') or callback_data.startswith('edit_payment_method_') or callback_data.startswith('edit_payment_type_') or callback_data.startswith('edit_payment_sum_') or callback_data.startswith('edit_sno_') or callback_data.startswith('edit_payment_address_') or callback_data.startswith('edit_payment_link_') or callback_data.startswith('edit_operation_type_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
         # Extract field type and preview_id
         print(f"[DEBUG] Edit field button clicked! callback_data: {callback_data}")
         if callback_data.startswith('edit_item_'):
@@ -777,6 +777,43 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         
         edit_message(bot_token, chat_id, message_id, prompt_text)
     
+    elif callback_data.startswith('show_receipt_'):
+        # Show receipt text/content
+        preview_id = callback_data.replace('show_receipt_', '')
+        preview_data = get_preview_data(preview_id)
+        
+        if not preview_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
+        
+        receipt_data = preview_data.get('receipt_data', {})
+        user_message = preview_data.get('user_message', 'Не указано')
+        
+        receipt_text = "🧾 <b>Содержимое чека</b>\n\n"
+        receipt_text += f"<b>Оригинальный запрос:</b>\n<code>{user_message}</code>\n\n"
+        receipt_text += f"<b>Чек ID:</b> <code>{preview_id}</code>\n"
+        
+        if receipt_data.get('items'):
+            receipt_text += f"\n<b>Товары:</b>\n"
+            for idx, item in enumerate(receipt_data['items'], 1):
+                receipt_text += f"{idx}. {item.get('name', 'Товар')} - {item.get('price', 0)}₽\n"
+        
+        back_buttons = [
+            [{"text": "« Назад", "callback_data": f"edit_group_doc_{preview_id}"}]
+        ]
+        
+        edit_message_with_buttons(bot_token, chat_id, message_id, receipt_text, back_buttons)
+    
+    elif callback_data.startswith('edit_payment_link_'):
+        # Edit payment link
+        preview_id = callback_data.replace('edit_payment_link_', '')
+        field = 'payment_link'
+        
+        prompt_text = "🔗 <b>Изменить ссылку на оплату</b>\n\nОтправь новую ссылку текстом.\n\nНапример: <code>https://payment.example.com/123</code>"
+        
+        save_editing_state(preview_id, field)
+        edit_message(bot_token, chat_id, message_id, prompt_text)
+    
     # CRITICAL: edit_group_ MUST be checked BEFORE general edit_ to avoid false matches
     elif callback_data.startswith('edit_group_'):
         # Handle group menu selections
@@ -826,6 +863,8 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             # Тип документа
             group_text = "📄 <b>Тип документа</b>\n\nВыбери параметр:"
             group_buttons = [
+                [{"text": "🧾 Чек", "callback_data": f"show_receipt_{preview_id}"}],
+                [{"text": "🔗 Ссылка на оплату", "callback_data": f"edit_payment_link_{preview_id}"}],
                 [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
                 [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
             ]
@@ -1650,6 +1689,12 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
                 receipt_data['company'] = {}
             receipt_data['company']['payment_address'] = new_value
             print(f"[DEBUG] Updated payment_address to: {new_value}")
+        elif field == 'payment_link':
+            if 'payment_link' not in receipt_data:
+                receipt_data['payment_link'] = new_value
+            else:
+                receipt_data['payment_link'] = new_value
+            print(f"[DEBUG] Updated payment_link to: {new_value}")
         else:
             print(f"[ERROR] Unknown field: {field}")
             return False
