@@ -2434,40 +2434,108 @@ def show_receipt_preview(bot_token: str, chat_id: int, preview_data: Dict[str, A
     total = receipt_data.get('total', 0)
     payments = receipt_data.get('payments', [])
     client_data = receipt_data.get('client', {})
+    company_data = receipt_data.get('company', {})
     operation_type = receipt_data.get('operation_type', 'sell')
     
     operation_names = {
-        'sell': '🛒 Приход (продажа)',
-        'refund': '↩️ Возврат прихода',
-        'sell_correction': '📝 Коррекция прихода',
-        'refund_correction': '📝 Коррекция расхода'
+        'sell': 'Приход',
+        'refund': 'Возврат прихода',
+        'sell_correction': 'Коррекция прихода',
+        'refund_correction': 'Коррекция расхода'
     }
     
     payment_link_enabled = receipt_data.get('payment_link_enabled', False)
-    document_type_text = "🔗 Платежная ссылка" if payment_link_enabled else "🧾 Чек"
+    is_payment_link = payment_link_enabled
+    document_type_text = "🔗 Платежная ссылка" if is_payment_link else "🧾 Чек"
     
     response_text = "📋 <b>Проверь перед отправкой:</b>\n\n"
     response_text += f"<b>Тип документа:</b> {document_type_text}\n"
+    response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n"
     
-    if payment_link_enabled:
-        provider_name = receipt_data.get('payment_provider_name', 'Не выбран')
-        response_text += f"<b>💳 Провайдер:</b> {provider_name}\n"
+    # Company info (SNO and payment address)
+    sno = company_data.get('sno', 'usn_income')
+    payment_address = company_data.get('payment_address', '')
     
-    response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
+    sno_names = {
+        'usn_income': 'УСН доход',
+        'usn_income_outcome': 'УСН доход-расход',
+        'osn': 'ОСНО',
+        'esn': 'ЕСХН',
+        'patent': 'Патент'
+    }
     
-    response_text += "<b>Товары/Услуги:</b>\n"
+    response_text += f"<b>💼 СНО:</b> {sno_names.get(sno, sno)}\n"
+    if payment_address:
+        response_text += f"<b>📍 Адрес расчетов:</b> {payment_address}\n"
+    
+    response_text += f"<b>📧 Email клиента:</b> {client_data.get('email', 'Не указан')}\n"
+    
+    response_text += "\n<b>Товары/Услуги:</b>\n"
+    
+    # VAT names
+    vat_names = {
+        'none': 'Без НДС',
+        'vat0': 'НДС 0%',
+        'vat10': 'НДС 10%',
+        'vat20': 'НДС 20%'
+    }
+    
+    # Payment object names
+    object_names = {
+        'commodity': 'Товар',
+        'service': 'Услуга',
+        'excise': 'Подакцизный товар',
+        'job': 'Работа'
+    }
+    
+    # Payment method names
+    method_names = {
+        'full_payment': 'Полный расчёт',
+        'prepayment': 'Предоплата',
+        'advance': 'Аванс',
+        'full_prepayment': 'Предоплата 100%',
+        'partial_payment': 'Частичный расчёт',
+        'credit': 'Кредит',
+        'credit_payment': 'Оплата кредита'
+    }
+    
     for idx, item in enumerate(items, 1):
         name = item.get('name', 'Товар')
         price = item.get('price', 0)
         qty = item.get('quantity', 1)
-        response_text += f"{idx}. {name} — {price}₽ × {qty}\n"
+        measure = item.get('measure', 'шт')
+        vat = item.get('vat', 'none')
+        payment_object = item.get('payment_object', 'commodity')
+        payment_method = item.get('payment_method', 'full_payment')
+        
+        response_text += f"\n<b>{idx}. {name}</b>\n"
+        response_text += f"   Цена: {price}₽ × {qty} {measure}\n"
+        response_text += f"   НДС: {vat_names.get(vat, vat)}\n"
+        response_text += f"   Предмет: {object_names.get(payment_object, payment_object)}\n"
+        response_text += f"   Способ: {method_names.get(payment_method, payment_method)}\n"
     
-    response_text += f"\n<b>💰 Итого:</b> {total}₽\n"
-    response_text += f"<b>📧 Email:</b> {client_data.get('email', 'Не указан')}\n"
+    response_text += f"\n<b>💰 Итого:</b> {total}₽\n\n"
+    
+    # Payment details
+    if is_payment_link:
+        provider_name = receipt_data.get('payment_provider_name', 'Не выбран')
+        response_text += f"<b>Способ оплаты:</b> 🔗 Ссылка на оплату ({provider_name})\n"
+    elif payments and len(payments) > 1:
+        response_text += "<b>Способы оплаты:</b>\n"
+        payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
+        for payment in payments:
+            ptype = payment.get('type', '1')
+            psum = payment.get('sum', 0)
+            response_text += f"  • {payment_names.get(str(ptype), 'Безнал')}: {psum}₽\n"
+    else:
+        payment_type = payments[0].get('type', '1') if payments else '1'
+        payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
+        payment_str = payment_names.get(str(payment_type), "💳 Безналичный")
+        response_text += f"<b>Способ оплаты:</b> {payment_str}\n"
     
     buttons = [
-        [{"text": "✅ Создать", "callback_data": f"confirm_{preview_id}"}],
-        [{"text": "✏️ Редактировать", "callback_data": f"edit_{preview_id}"}],
+        [{"text": "✅ Отправить запрос", "callback_data": f"confirm_{preview_id}"}],
+        [{"text": "✏️ Изменить", "callback_data": f"edit_{preview_id}"}],
         [{"text": "❌ Отменить", "callback_data": f"cancel_{preview_id}"}]
     ]
     
