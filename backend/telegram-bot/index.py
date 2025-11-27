@@ -1484,10 +1484,10 @@ def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
         # Encode audio to base64
         audio_base64 = base64.b64encode(voice_data).decode('utf-8')
         
-        # Use OpenAI Whisper API directly (not gpt-4o audio, but dedicated whisper endpoint)
-        api_key = os.environ.get('OPENAI_API_KEY')
+        # Use GPTunnel Whisper API (supports Russian transcription)
+        api_key = os.environ.get('GPTUNNEL_API_KEY')
         if not api_key:
-            return {'error': 'OpenAI API key not configured. Add it in project settings.'}
+            return {'error': 'API key not configured'}
         
         # Prepare multipart/form-data for Whisper API
         boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW'
@@ -1506,7 +1506,7 @@ def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
         body_parts.append(b'')
         body_parts.append(b'whisper-1')
         
-        # Add language hint
+        # Add language hint for better accuracy
         body_parts.append(f'--{boundary}'.encode())
         body_parts.append(b'Content-Disposition: form-data; name="language"')
         body_parts.append(b'')
@@ -1516,8 +1516,8 @@ def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
         
         body = b'\r\n'.join(body_parts)
         
-        # Call OpenAI Whisper API directly
-        whisper_url = 'https://api.openai.com/v1/audio/transcriptions'
+        # Call GPTunnel Whisper API
+        whisper_url = 'https://gptunnel.ru/v1/audio/transcriptions'
         whisper_req = urllib.request.Request(
             whisper_url,
             data=body,
