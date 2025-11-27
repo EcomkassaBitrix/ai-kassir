@@ -688,7 +688,15 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             payment_names = {'0': "💵 Наличные", '1': "💳 Карта", '2': "📝 Предоплата", '3': "🏦 Кредит"}
             payment_str = payment_names.get(str(payment_type), "💳 Безналичный")
             
-            response_text = "✅ Чек создан и отправлен!\n\n"
+            # CRITICAL: Check if this is a payment link receipt
+            payment_link = receipt_result.get('payment_link', '')
+            qr_code = receipt_result.get('qr_code', '')
+            
+            if payment_link:
+                response_text = "✅ Платежная ссылка создана!\n\n"
+            else:
+                response_text = "✅ Чек создан и отправлен!\n\n"
+            
             for item in items:
                 name = item.get('name', 'Товар')
                 price = item.get('price', 0)
@@ -702,6 +710,13 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             
             if receipt_result.get('uuid'):
                 response_text += f"\n\n🆔 UUID: {receipt_result['uuid']}"
+            
+            # CRITICAL: Add payment link and QR code if present
+            if payment_link:
+                response_text += f"\n\n🔗 <b>Ссылка на оплату:</b>\n{payment_link}"
+            
+            if qr_code:
+                response_text += f"\n\n📱 <b>QR-код:</b>\n{qr_code}"
             
             edit_message(bot_token, chat_id, message_id, response_text)
         else:
