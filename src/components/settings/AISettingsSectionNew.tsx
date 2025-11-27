@@ -148,15 +148,20 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
   const providersWithKeys = providers.filter(p => p.has_secret);
   const hasAnyKey = providersWithKeys.length > 0;
 
+  const textProviders = providers.filter(p => p.id !== 'yandex_speechkit');
+  const speechProviders = providers.filter(p => p.id === 'yandex_speechkit');
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Настройки ИИ-провайдера</CardTitle>
-        <CardDescription>
-          Выберите активного провайдера для обработки запросов. API-ключи хранятся в секретах проекта.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div className="space-y-6">
+      {/* Распознавание текста (Chat AI) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Распознавание текста</CardTitle>
+          <CardDescription>
+            Выберите AI-модель для обработки текстовых сообщений в чате. API-ключи хранятся в секретах проекта.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
         {modelSelectMode ? (
           <Alert className="bg-blue-50 border-blue-200">
             <AlertDescription>
@@ -233,7 +238,7 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
         )}
 
         <div className="space-y-2">
-          {providers.map((provider) => {
+          {textProviders.map((provider) => {
             const isActive = activeProvider === provider.id;
             const hasOtherActiveKey = hasAnyKey && !provider.has_secret;
             
@@ -329,5 +334,86 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
         )}
       </CardContent>
     </Card>
+
+    {/* Распознавание голоса (Speech-to-Text) */}
+    <Card>
+      <CardHeader>
+        <CardTitle>Распознавание голоса</CardTitle>
+        <CardDescription>
+          Настройте распознавание голосовых сообщений для Telegram-бота. Используется Yandex SpeechKit с бесплатным лимитом 1000 минут/месяц.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {speechProviders.map((provider) => {
+          const isActive = activeProvider === provider.id;
+          
+          return (
+            <div
+              key={provider.id}
+              className={`w-full flex items-center justify-between p-4 rounded-lg border ${
+                isActive
+                  ? 'border-green-500 bg-green-50'
+                  : provider.has_secret
+                  ? 'border-gray-200 hover:border-gray-300'
+                  : 'border-gray-200 bg-gray-50'
+              }`}
+            >
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-gray-900">{provider.name}</h3>
+                  {isActive && (
+                    <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full">
+                      Активен
+                    </span>
+                  )}
+                  {!provider.has_secret && (
+                    <span className="text-xs bg-gray-400 text-white px-2 py-0.5 rounded-full">
+                      Нет ключа
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-600 mt-1">{provider.description}</p>
+                {!provider.has_secret && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Добавьте секрет <code className="bg-gray-200 px-1 rounded">{provider.secret_name}</code> для активации
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {provider.has_secret && !isActive && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleTestKey(provider.id)}
+                    >
+                      Проверить
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => handleProviderChange(provider.id)}
+                    >
+                      Включить
+                    </Button>
+                  </>
+                )}
+                {isActive && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleProviderChange('')}
+                    className="text-red-600 hover:text-red-700 hover:border-red-300"
+                  >
+                    Отключить
+                  </Button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+    </div>
   );
 };
