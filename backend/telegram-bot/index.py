@@ -828,6 +828,15 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         for provider in payment_providers:
             provider_id = provider.get('id')
             provider_desc = provider.get('description', f'Провайдер {provider_id}')
+            
+            # Clean provider description: remove common prefixes
+            provider_desc = provider_desc.replace('Платёж через счёт ', '')
+            provider_desc = provider_desc.replace('Платёж через эквайринг ', '')
+            provider_desc = provider_desc.replace('Платёж через СБП ', '')
+            provider_desc = provider_desc.replace('Платёж через ', '')
+            # Remove quotes around provider names
+            provider_desc = provider_desc.replace('"', '')
+            
             provider_buttons.append([{
                 "text": provider_desc,
                 "callback_data": f"set_payment_provider_{provider_id}_{preview_id}"
