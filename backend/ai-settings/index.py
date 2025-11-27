@@ -60,8 +60,14 @@ def validate_yandexgpt_key(api_key: str, folder_id: str) -> Dict[str, Any]:
 def validate_yandex_speechkit_key(api_key: str) -> Dict[str, Any]:
     '''Validate Yandex SpeechKit API key by testing STT endpoint'''
     try:
-        # Test with minimal audio data (1 second of silence in OGG)
-        test_audio = b'\x4f\x67\x67\x53\x00\x02'
+        # Minimal valid OGG Opus file (silence, ~1 second)
+        # This is a valid OGG Opus header + minimal audio data
+        test_audio = bytes([
+            0x4f, 0x67, 0x67, 0x53, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x13, 0x10, 0x00, 0x00, 0x01, 0x13,
+            0x4f, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64, 0x01, 0x02, 0x38, 0x01, 0x80, 0xbb,
+            0x00, 0x00, 0x00, 0x00, 0x00
+        ])
         
         response = requests.post(
             'https://stt.api.cloud.yandex.net/speech/v1/stt:recognize',
@@ -76,13 +82,19 @@ def validate_yandex_speechkit_key(api_key: str) -> Dict[str, Any]:
             timeout=10
         )
         
-        # Even if transcription fails (empty audio), 200 status means key is valid
-        if response.status_code == 200:
+        # 200 or 400 (bad audio but auth OK) means key is valid
+        # 401/403 means auth failed
+        if response.status_code in [200, 400]:
             return {'valid': True, 'message': 'Yandex SpeechKit key is valid'}
-        elif response.status_code == 401:
-            return {'valid': False, 'message': 'Invalid API key'}
+        elif response.status_code in [401, 403]:
+            return {'valid': False, 'message': 'Invalid API key or access denied'}
         else:
-            return {'valid': False, 'message': f'Validation error: {response.status_code}'}
+            # For debugging - return actual response
+            try:
+                error_text = response.text
+                return {'valid': False, 'message': f'HTTP {response.status_code}: {error_text[:100]}'}
+            except:
+                return {'valid': False, 'message': f'HTTP error {response.status_code}'}
     except Exception as e:
         return {'valid': False, 'message': f'Validation error: {str(e)}'}
 
