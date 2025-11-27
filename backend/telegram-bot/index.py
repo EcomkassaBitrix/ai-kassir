@@ -114,7 +114,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             send_telegram_message(bot_token, chat_id, response_text)
             return create_response({'ok': True})
         
-        if text.startswith('/history'):
+        if text.startswith('/history') or text.lower().strip() == 'история':
             user_id = get_user_id_for_telegram(chat_id)
             history = get_user_receipts_history(user_id, limit=10)
             
@@ -145,7 +145,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             send_telegram_message_with_buttons(bot_token, chat_id, response_text, history_buttons)
             return create_response({'ok': True})
         
-        if text.startswith('/repeat') or text.lower() in ['повтори', 'повтори последний', 'повтори запрос', 'повторить']:
+        if text.startswith('/repeat') or text.lower().strip() in ['повтори', 'повтори последний', 'повтори запрос', 'повторить']:
             user_id = get_user_id_for_telegram(chat_id)
             last_request = get_last_successful_request(chat_id)
             
