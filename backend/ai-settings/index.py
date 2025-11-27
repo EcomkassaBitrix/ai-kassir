@@ -246,7 +246,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
         
         provider = next((p for p in available_providers if p['id'] == provider_id), None)
-        if provider_id and provider and not provider['has_secret']:
+        # Skip secret check for yandex_speechkit as it uses DB storage
+        if provider_id and provider_id != 'yandex_speechkit' and provider and not provider['has_secret']:
             cur.close()
             conn.close()
             return {
