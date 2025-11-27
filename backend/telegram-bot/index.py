@@ -1315,16 +1315,45 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             operation_type = receipt_data.get('operation_type', 'sell')
             
             operation_names = {
-                'sell': '🛒 Приход (продажа)',
-                'refund': '↩️ Возврат прихода',
-                'sell_correction': '📝 Коррекция прихода',
-                'refund_correction': '📝 Коррекция расхода'
+                'sell': 'Приход',
+                'refund': 'Возврат прихода',
+                'sell_correction': 'Коррекция прихода',
+                'refund_correction': 'Коррекция расхода'
             }
             
-            response_text = "📋 <b>Проверь чек перед отправкой:</b>\n\n"
-            response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
+            response_text = "📋 <b>Проверь перед отправкой:</b>\n\n"
             
-            response_text += "<b>Товары/Услуги:</b>\n"
+            # Document type with provider on same line for payment links
+            payment_link_enabled = receipt_data.get('payment_link_enabled', False)
+            company_data_back = receipt_data.get('company', {})
+            
+            if payment_link_enabled:
+                provider_name = receipt_data.get('payment_provider_name', 'Не выбран')
+                response_text += f"<b>Тип документа:</b> 🔗 Платежная ссылка Провайдер: {provider_name}\n"
+            else:
+                response_text += f"<b>Тип документа:</b> 🧾 Чек\n"
+            
+            response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n"
+            
+            # Company info (SNO and payment address) - BEFORE items
+            sno_back = company_data_back.get('sno', 'usn_income')
+            payment_address_back = company_data_back.get('payment_address', '')
+            
+            sno_names_back = {
+                'usn_income': 'УСН доход',
+                'usn_income_outcome': 'УСН доход-расход',
+                'osn': 'ОСНО',
+                'esn': 'ЕСХН',
+                'patent': 'Патент'
+            }
+            
+            response_text += f"<b>💼 СНО:</b> {sno_names_back.get(sno_back, sno_back)}\n"
+            if payment_address_back:
+                response_text += f"<b>📍 Адрес расчетов:</b> {payment_address_back}\n"
+            
+            response_text += f"<b>📧 Email клиента:</b> {client_data.get('email', 'Не указан')}\n"
+            
+            response_text += "\n<b>Товары/Услуги:</b>\n"
             for idx, item in enumerate(items, 1):
                 name = item.get('name', 'Товар')
                 price = item.get('price', 0)
@@ -1354,13 +1383,10 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             
             response_text += f"\n<b>💰 Итого:</b> {total}₽\n\n"
             
-            # Check if payment link is enabled
-            payment_link_enabled = receipt_data.get('payment_link_enabled', False)
-            
+            # Payment details - same as show_receipt_preview
             if payment_link_enabled:
-                # Show payment link info
-                provider_name = receipt_data.get('payment_provider_name', 'Не указан')
-                response_text += f"<b>🔗 Способ оплаты:</b> Ссылка на оплату ({provider_name})\n"
+                # For payment links, payment method is always "Безналичный" (from provider)
+                response_text += f"<b>Способ оплаты:</b> 💳 Безналичный\n"
             elif payments and len(payments) > 1:
                 response_text += "<b>Способы оплаты:</b>\n"
                 payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
@@ -1373,29 +1399,6 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
                 payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
                 payment_str = payment_names.get(str(payment_type), "💳 Безналичный")
                 response_text += f"<b>Способ оплаты:</b> {payment_str}\n"
-            
-            response_text += f"\n<b>📧 Email клиента:</b> {client_data.get('email', 'Не указан')}\n"
-            
-            client_phone = client_data.get('phone')
-            if client_phone:
-                response_text += f"<b>📱 Телефон:</b> {client_phone}\n"
-            
-            # Company info (SNO and payment address)
-            company_data_back = receipt_data.get('company', {})
-            sno_back = company_data_back.get('sno', 'usn_income')
-            payment_address_back = company_data_back.get('payment_address', '')
-            
-            sno_names_back = {
-                'usn_income': 'УСН доход',
-                'usn_income_outcome': 'УСН доход-расход',
-                'osn': 'ОСНО',
-                'esn': 'ЕСХН',
-                'patent': 'Патент'
-            }
-            
-            response_text += f"\n<b>💼 СНО:</b> {sno_names_back.get(sno_back, sno_back)}\n"
-            if payment_address_back:
-                response_text += f"<b>📍 Адрес расчетов:</b> {payment_address_back}\n"
             
             edit_message_with_buttons(
                 bot_token,
