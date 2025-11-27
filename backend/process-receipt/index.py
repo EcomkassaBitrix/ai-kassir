@@ -1696,7 +1696,7 @@ def create_ecomkassa_receipt(
             'items': items_for_payload,
             'payments': [
                 {
-                    'type': int(payment.get('type', 1)) if isinstance(payment.get('type'), str) and payment.get('type').isdigit() else 1,
+                    'type': int(payment.get('type', 1)),  # CRITICAL: Support provider IDs (103, 102, etc.) for payment links
                     'sum': float(payment.get('sum', payment_total))
                 }
                 for payment in payments_list
