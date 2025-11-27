@@ -2229,6 +2229,7 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
             'payment_type': payment_type,
             'document_type': document_type,
             'payment_link_enabled': is_payment_link,
+            'payment_provider_id': int(payment_type) if is_payment_link else None,
             'payment_provider_name': provider_name if is_payment_link else None
         }
         
@@ -2299,6 +2300,7 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
             'payment_type': payment_type,
             'document_type': document_type,
             'payment_link_enabled': is_payment_link,
+            'payment_provider_id': int(payment_type) if is_payment_link else None,
             'payment_provider_name': provider_name if is_payment_link else None
         }
         
