@@ -12,6 +12,7 @@ def get_ai_completion(user_text: str, settings: dict, context: str = '') -> Opti
     Universal AI completion function supporting multiple providers
     Returns parsed receipt JSON or None if failed
     context: previous incomplete request from user
+    Updated: Added service detection rules for psychologist and other professional services
     '''
     active_provider = settings.get('active_ai_provider', 'gigachat')
     
@@ -61,10 +62,29 @@ def get_ai_completion(user_text: str, settings: dict, context: str = '') -> Opti
 
 Поля (только корректные значения):
 operation_type: sell/sell_refund
-payment_object: commodity/service
+payment_object: commodity/service (ВАЖНО: автоматически определяй по контексту!)
 vat: none/vat20/vat10 (дефолт none)
 measure: шт/услуга
 client: email (проверь формат), phone (+7...), МОЖНО null если "без почты"
+
+ВАЖНО про payment_object (предмет расчета):
+• service - если это УСЛУГА (действие, работа человека или выполнение чего-либо):
+  - Профессиональные услуги: психолог, консультация, коуч, юрист, адвокат, бухгалтер, нотариус
+  - Медицинские услуги: массаж, процедура, лечение, диагностика, анализ
+  - Красота: стрижка, укладка, маникюр, педикюр, макияж, окрашивание, наращивание
+  - Образовательные: урок, занятие, курс, тренинг, вебинар, мастер-класс
+  - Бытовые: уборка, ремонт, настройка, установка, доставка, транспорт, такси
+  - Креативные: дизайн, разработка, фотосессия, видеосъёмка, монтаж
+  - Спорт: тренировка, фитнес, йога, массаж
+  - Аренда: помещения, оборудования, транспорта
+• commodity - если это ТОВАР (физический предмет, который продается):
+  - Еда и напитки: кофе, чай, обед, пирожок, торт, продукты
+  - Техника: телефон, ноутбук, наушники, зарядка
+  - Одежда: футболка, джинсы, обувь, аксессуары
+  - Мебель: шкаф, стол, стул, диван
+  - Другие физические товары
+
+Если неясно - смотри на контекст: "психолог" = услуга, "кофе" = товар, "мебель на заказ" = товар
 
 ВАЖНО про payment_method (признак способа расчета по ФФД 1.2):
 • full_prepayment – предоплата 100%. Полная предоплата до передачи товара
@@ -97,7 +117,9 @@ client: email (проверь формат), phone (+7...), МОЖНО null ес
 
 Примеры запросов:
 - "кофе 200₽ без почты" → {{"operation_type":"sell","items":[{{"name":"кофе","price":200,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":200}}]}}
+- "психолог 27 рубля без почты" → {{"operation_type":"sell","items":[{{"name":"психолог","price":27,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":27}}]}}
 - "услуга 1500₽ не отправлять чек" → {{"operation_type":"sell","items":[{{"name":"услуга","price":1500,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":1500}}]}}
+- "консультация юриста 3000₽" → {{"operation_type":"sell","items":[{{"name":"консультация юриста","price":3000,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":3000}}]}}
 - "Я продаю мебель на заказ за 1300.12 в кредит первоначальный взнос 500" → {{"operation_type":"sell","items":[{{"name":"мебель на заказ","price":1300.12,"quantity":1,"measure":"шт","vat":"none","payment_method":"partial_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":500}},{{"type":"3","sum":800.12}}]}}
 - "товар 1000₽, 600 наличными остальное картой" → {{"operation_type":"sell","items":[{{"name":"товар","price":1000,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"0","sum":600}},{{"type":"1","sum":400}}]}}
 - "стрижка и укладка 2500₽" → {{"operation_type":"sell","items":[{{"name":"стрижка и укладка","price":2500,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":2500}}]}}
