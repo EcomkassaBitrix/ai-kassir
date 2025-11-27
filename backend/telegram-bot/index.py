@@ -2204,6 +2204,22 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
             document_type = 'receipt'
             is_payment_link = False
         
+        # Get real provider name from Ecomkassa API
+        provider_name = f'Провайдер {payment_type}'
+        if is_payment_link:
+            providers = get_payment_providers(user_id)
+            if providers:
+                for provider in providers:
+                    if str(provider.get('id')) == str(payment_type):
+                        provider_desc = provider.get('description', '')
+                        # Clean provider description
+                        provider_desc = provider_desc.replace('Платёж через счёт ', '')
+                        provider_desc = provider_desc.replace('Платёж через эквайринг ', '')
+                        provider_desc = provider_desc.replace('Платёж через ', '')
+                        provider_desc = provider_desc.replace('"', '')
+                        provider_name = provider_desc
+                        break
+        
         receipt_data = {
             'items': items,
             'total': float(row[1]),
@@ -2213,7 +2229,7 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
             'payment_type': payment_type,
             'document_type': document_type,
             'payment_link_enabled': is_payment_link,
-            'payment_provider_name': f'Провайдер {payment_type}' if is_payment_link else None
+            'payment_provider_name': provider_name if is_payment_link else None
         }
         
         return receipt_data
@@ -2258,6 +2274,22 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
             document_type = 'receipt'
             is_payment_link = False
         
+        # Get real provider name from Ecomkassa API
+        provider_name = f'Провайдер {payment_type}'
+        if is_payment_link:
+            providers = get_payment_providers(user_id)
+            if providers:
+                for provider in providers:
+                    if str(provider.get('id')) == str(payment_type):
+                        provider_desc = provider.get('description', '')
+                        # Clean provider description
+                        provider_desc = provider_desc.replace('Платёж через счёт ', '')
+                        provider_desc = provider_desc.replace('Платёж через эквайринг ', '')
+                        provider_desc = provider_desc.replace('Платёж через ', '')
+                        provider_desc = provider_desc.replace('"', '')
+                        provider_name = provider_desc
+                        break
+        
         receipt_data = {
             'items': items,
             'total': float(row[1]),
@@ -2267,7 +2299,7 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
             'payment_type': payment_type,
             'document_type': document_type,
             'payment_link_enabled': is_payment_link,
-            'payment_provider_name': f'Провайдер {payment_type}' if is_payment_link else None
+            'payment_provider_name': provider_name if is_payment_link else None
         }
         
         return receipt_data
