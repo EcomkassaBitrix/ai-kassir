@@ -1452,10 +1452,9 @@ def get_bot_token() -> str:
 
 def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
     '''
-    Download voice message and transcribe using OpenAI Whisper
+    Download voice message and transcribe using GPT-4o Audio
     Returns: {'text': transcribed_text} or {'error': message}
     '''
-    import tempfile
     import base64
     
     voice = message.get('voice', {})
@@ -1482,54 +1481,57 @@ def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
         file_resp = urllib.request.urlopen(file_req, timeout=30)
         voice_data = file_resp.read()
         
-        # Transcribe with OpenAI Whisper
-        openai_key = os.environ.get('GPTUNNEL_API_KEY')
-        if not openai_key:
-            return {'error': 'OpenAI API key not configured'}
+        # Encode audio to base64
+        audio_base64 = base64.b64encode(voice_data).decode('utf-8')
         
-        # Prepare multipart/form-data request
-        boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW'
-        body_parts = []
+        # Call GPT-4o Audio via gptunnel
+        api_key = os.environ.get('GPTUNNEL_API_KEY')
+        if not api_key:
+            return {'error': 'API key not configured'}
         
-        # Add file
-        body_parts.append(f'--{boundary}'.encode())
-        body_parts.append(b'Content-Disposition: form-data; name="file"; filename="voice.ogg"')
-        body_parts.append(b'Content-Type: audio/ogg')
-        body_parts.append(b'')
-        body_parts.append(voice_data)
+        # GPT-4o Audio format: send audio as base64 in content array
+        payload = {
+            'model': 'gpt-4o-audio-preview',
+            'modalities': ['text'],
+            'audio': {
+                'voice': 'alloy',
+                'format': 'wav'
+            },
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': [
+                        {
+                            'type': 'input_audio',
+                            'input_audio': {
+                                'data': audio_base64,
+                                'format': 'wav'
+                            }
+                        },
+                        {
+                            'type': 'text',
+                            'text': 'Распознай русскую речь из этого аудио и верни ТОЛЬКО текст без дополнительных объяснений.'
+                        }
+                    ]
+                }
+            ]
+        }
         
-        # Add model
-        body_parts.append(f'--{boundary}'.encode())
-        body_parts.append(b'Content-Disposition: form-data; name="model"')
-        body_parts.append(b'')
-        body_parts.append(b'whisper-1')
-        
-        # Add language hint
-        body_parts.append(f'--{boundary}'.encode())
-        body_parts.append(b'Content-Disposition: form-data; name="language"')
-        body_parts.append(b'')
-        body_parts.append(b'ru')
-        
-        body_parts.append(f'--{boundary}--'.encode())
-        
-        body = b'\r\n'.join(body_parts)
-        
-        # Call OpenAI Whisper API
-        whisper_url = 'https://gptunnel.ru/v1/audio/transcriptions'
-        whisper_req = urllib.request.Request(
-            whisper_url,
-            data=body,
+        gpt_url = 'https://gptunnel.ru/v1/chat/completions'
+        gpt_req = urllib.request.Request(
+            gpt_url,
+            data=json.dumps(payload).encode('utf-8'),
             headers={
-                'Authorization': f'Bearer {openai_key}',
-                'Content-Type': f'multipart/form-data; boundary={boundary}'
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
             },
             method='POST'
         )
         
-        whisper_resp = urllib.request.urlopen(whisper_req, timeout=30)
-        whisper_data = json.loads(whisper_resp.read().decode('utf-8'))
+        gpt_resp = urllib.request.urlopen(gpt_req, timeout=60)
+        gpt_data = json.loads(gpt_resp.read().decode('utf-8'))
         
-        transcribed_text = whisper_data.get('text', '').strip()
+        transcribed_text = gpt_data.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
         
         if not transcribed_text:
             return {'error': 'Could not transcribe voice message'}
