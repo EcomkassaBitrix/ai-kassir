@@ -90,6 +90,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "• Кофе 200р\n"
                 "• Продал телефон за 15000\n"
                 "• Аренда офиса 30000 наличными\n\n"
+                "💡 Команда /repeat повторит последний чек\n\n"
                 "Я создам чек автоматически! ☕️"
             )
             send_telegram_message(bot_token, chat_id, response_text)
@@ -97,15 +98,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         if text.startswith('/help'):
             response_text = (
-                "📝 Как пользоваться:\n\n"
+                "📝 <b>Как пользоваться:</b>\n\n"
                 "1. Опиши товар/услугу и сумму\n"
                 "2. Я создам чек автоматически\n"
                 "3. Чек отправится в ЕкомКасса\n\n"
-                "Примеры:\n"
+                "<b>Примеры:</b>\n"
                 "• Кофе латте 250р\n"
                 "• Консультация 5000\n"
                 "• 3 пирожка по 50р\n\n"
-                "Указывай тип оплаты: наличные/карта/СБП"
+                "<b>Команды:</b>\n"
+                "/repeat - Повторить последний чек\n"
+                "/history - История чеков\n"
+                "/help - Эта справка"
             )
             send_telegram_message(bot_token, chat_id, response_text)
             return create_response({'ok': True})
@@ -133,6 +137,25 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     response_text += f"💰 {total}₽ | UUID: {uuid}\n\n"
             
             send_telegram_message(bot_token, chat_id, response_text)
+            return create_response({'ok': True})
+        
+        if text.startswith('/repeat') or text.lower() in ['повтори', 'повтори последний', 'повтори запрос', 'повторить']:
+            user_id = get_user_id_for_telegram(chat_id)
+            last_request = get_last_successful_request(chat_id)
+            
+            if not last_request:
+                send_telegram_message(bot_token, chat_id, "❌ Нет предыдущих успешных запросов для повтора")
+                return create_response({'ok': True})
+            
+            # Show preview with same data as last time
+            preview_id = last_request['preview_id']
+            preview_data = last_request['preview_data']
+            
+            # Store preview data for confirmation
+            store_preview_data(preview_id, preview_data, chat_id)
+            
+            # Show preview message
+            show_receipt_preview(bot_token, chat_id, preview_data, preview_id)
             return create_response({'ok': True})
         
         user_id = get_user_id_for_telegram(chat_id)
@@ -742,6 +765,9 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             # CRITICAL: Send QR code as photo if available
             if qr_code:
                 send_photo(bot_token, chat_id, qr_code, "📱 Отсканируй QR-код для оплаты")
+            
+            # CRITICAL: Save last successful request for /repeat command
+            save_last_successful_request(chat_id, preview_id, preview_data)
         else:
             error_msg = receipt_result.get('message') or receipt_result.get('error', 'Не удалось создать чек')
             edit_message(bot_token, chat_id, message_id, f"❌ Ошибка: {error_msg}")
@@ -1954,6 +1980,109 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
     except Exception as e:
         print(f"[ERROR] Failed to update preview field: {e}")
         return False
+
+
+def save_last_successful_request(chat_id: int, preview_id: str, preview_data: Dict[str, Any]) -> None:
+    '''Save last successful request for /repeat command'''
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        # Store in database
+        cur.execute("""
+            INSERT INTO telegram_last_requests (chat_id, preview_id, preview_data, created_at)
+            VALUES (%s, %s, %s, NOW())
+            ON CONFLICT (chat_id) 
+            DO UPDATE SET preview_id = %s, preview_data = %s, created_at = NOW()
+        """, (chat_id, preview_id, json.dumps(preview_data), preview_id, json.dumps(preview_data)))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[DEBUG] Saved last request for chat_id={chat_id}")
+    except Exception as e:
+        print(f"[ERROR] Failed to save last request: {e}")
+
+
+def get_last_successful_request(chat_id: int) -> Optional[Dict[str, Any]]:
+    '''Get last successful request for /repeat command'''
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT preview_id, preview_data 
+            FROM telegram_last_requests 
+            WHERE chat_id = %s
+        """, (chat_id,))
+        
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if row:
+            import uuid
+            # Generate new preview_id for repeat
+            new_preview_id = str(uuid.uuid4())
+            return {
+                'preview_id': new_preview_id,
+                'preview_data': json.loads(row[1]) if isinstance(row[1], str) else row[1]
+            }
+        return None
+    except Exception as e:
+        print(f"[ERROR] Failed to get last request: {e}")
+        return None
+
+
+def show_receipt_preview(bot_token: str, chat_id: int, preview_data: Dict[str, Any], preview_id: str) -> None:
+    """Show receipt preview with confirmation buttons"""
+    receipt_data = preview_data.get('receipt_data')
+    if not receipt_data:
+        send_telegram_message(bot_token, chat_id, "❌ Ошибка: данные чека не найдены")
+        return
+    
+    items = receipt_data.get('items', [])
+    total = receipt_data.get('total', 0)
+    payments = receipt_data.get('payments', [])
+    client_data = receipt_data.get('client', {})
+    operation_type = receipt_data.get('operation_type', 'sell')
+    
+    operation_names = {
+        'sell': '🛒 Приход (продажа)',
+        'refund': '↩️ Возврат прихода',
+        'sell_correction': '📝 Коррекция прихода',
+        'refund_correction': '📝 Коррекция расхода'
+    }
+    
+    payment_link_enabled = receipt_data.get('payment_link_enabled', False)
+    document_type_text = "🔗 Платежная ссылка" if payment_link_enabled else "🧾 Чек"
+    
+    response_text = "📋 <b>Проверь перед отправкой:</b>\n\n"
+    response_text += f"<b>Тип документа:</b> {document_type_text}\n"
+    
+    if payment_link_enabled:
+        provider_name = receipt_data.get('payment_provider_name', 'Не выбран')
+        response_text += f"<b>💳 Провайдер:</b> {provider_name}\n"
+    
+    response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
+    
+    response_text += "<b>Товары/Услуги:</b>\n"
+    for idx, item in enumerate(items, 1):
+        name = item.get('name', 'Товар')
+        price = item.get('price', 0)
+        qty = item.get('quantity', 1)
+        response_text += f"{idx}. {name} — {price}₽ × {qty}\n"
+    
+    response_text += f"\n<b>💰 Итого:</b> {total}₽\n"
+    response_text += f"<b>📧 Email:</b> {client_data.get('email', 'Не указан')}\n"
+    
+    buttons = [
+        [{"text": "✅ Создать", "callback_data": f"confirm_{preview_id}"}],
+        [{"text": "✏️ Редактировать", "callback_data": f"edit_{preview_id}"}],
+        [{"text": "❌ Отменить", "callback_data": f"cancel_{preview_id}"}]
+    ]
+    
+    send_telegram_message_with_buttons(bot_token, chat_id, response_text, buttons)
 
 
 def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id: str) -> None:
