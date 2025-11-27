@@ -2192,6 +2192,15 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
         
         items = json.loads(row[0]) if isinstance(row[0], str) else row[0]
         payments = json.loads(row[2]) if isinstance(row[2], str) else row[2]
+        payment_type = row[5] or '103'
+        
+        # Determine document_type based on payment_type
+        # payment_type >= 100 means it's a payment link
+        try:
+            payment_type_int = int(payment_type)
+            document_type = 'link' if payment_type_int >= 100 else 'receipt'
+        except (ValueError, TypeError):
+            document_type = 'receipt'
         
         receipt_data = {
             'items': items,
@@ -2199,7 +2208,8 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
             'payments': payments,
             'operation_type': row[3] or 'Приход',
             'customer_email': row[4],
-            'payment_type': row[5] or '103'
+            'payment_type': payment_type,
+            'document_type': document_type
         }
         
         return receipt_data
@@ -2232,6 +2242,15 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
         
         items = json.loads(row[0]) if isinstance(row[0], str) else row[0]
         payments = json.loads(row[2]) if isinstance(row[2], str) else row[2]
+        payment_type = row[5] or '103'
+        
+        # Determine document_type based on payment_type
+        # payment_type >= 100 means it's a payment link
+        try:
+            payment_type_int = int(payment_type)
+            document_type = 'link' if payment_type_int >= 100 else 'receipt'
+        except (ValueError, TypeError):
+            document_type = 'receipt'
         
         receipt_data = {
             'items': items,
@@ -2239,7 +2258,8 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
             'payments': payments,
             'operation_type': row[3] or 'Приход',
             'customer_email': row[4],
-            'payment_type': row[5] or '103'
+            'payment_type': payment_type,
+            'document_type': document_type
         }
         
         return receipt_data
