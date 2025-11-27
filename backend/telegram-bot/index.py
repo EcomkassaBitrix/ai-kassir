@@ -2199,8 +2199,10 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
         try:
             payment_type_int = int(payment_type)
             document_type = 'link' if payment_type_int >= 100 else 'receipt'
+            is_payment_link = payment_type_int >= 100
         except (ValueError, TypeError):
             document_type = 'receipt'
+            is_payment_link = False
         
         receipt_data = {
             'items': items,
@@ -2209,7 +2211,9 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
             'operation_type': row[3] or 'Приход',
             'customer_email': row[4],
             'payment_type': payment_type,
-            'document_type': document_type
+            'document_type': document_type,
+            'payment_link_enabled': is_payment_link,
+            'payment_provider_name': f'Провайдер {payment_type}' if is_payment_link else None
         }
         
         return receipt_data
@@ -2249,8 +2253,10 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
         try:
             payment_type_int = int(payment_type)
             document_type = 'link' if payment_type_int >= 100 else 'receipt'
+            is_payment_link = payment_type_int >= 100
         except (ValueError, TypeError):
             document_type = 'receipt'
+            is_payment_link = False
         
         receipt_data = {
             'items': items,
@@ -2259,7 +2265,9 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
             'operation_type': row[3] or 'Приход',
             'customer_email': row[4],
             'payment_type': payment_type,
-            'document_type': document_type
+            'document_type': document_type,
+            'payment_link_enabled': is_payment_link,
+            'payment_provider_name': f'Провайдер {payment_type}' if is_payment_link else None
         }
         
         return receipt_data
