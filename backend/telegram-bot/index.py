@@ -145,6 +145,36 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             send_telegram_message_with_buttons(bot_token, chat_id, response_text, history_buttons)
             return create_response({'ok': True})
         
+        # Check for "повтори UUID" pattern
+        if text.lower().startswith('повтори '):
+            parts = text.split()
+            if len(parts) == 2 and parts[1].isdigit():
+                # User wants to repeat specific receipt by UUID
+                uuid_to_find = parts[1]
+                user_id = get_user_id_for_telegram(chat_id)
+                
+                # Find receipt by UUID
+                receipt_data = get_receipt_by_uuid(uuid_to_find, user_id)
+                
+                if not receipt_data:
+                    send_telegram_message(bot_token, chat_id, f"❌ Чек с UUID {uuid_to_find} не найден")
+                    return create_response({'ok': True})
+                
+                # Generate new preview_id
+                import uuid
+                preview_id = str(uuid.uuid4())
+                
+                # Store preview data
+                preview_data = {
+                    'receipt_data': receipt_data,
+                    'user_id': user_id,
+                    'user_message': f"Повтор чека UUID {uuid_to_find}"
+                }
+                
+                store_preview_data(preview_id, preview_data, chat_id)
+                show_receipt_preview(bot_token, chat_id, preview_data, preview_id)
+                return create_response({'ok': True})
+        
         if text.startswith('/repeat') or text.lower().strip() in ['повтори', 'повтори последний', 'повтори запрос', 'повторить']:
             user_id = get_user_id_for_telegram(chat_id)
             last_request = get_last_successful_request(chat_id)
@@ -2097,6 +2127,49 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
         return receipt_data
     except Exception as e:
         print(f"[ERROR] Failed to get receipt by ID: {e}")
+        return None
+
+
+def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]:
+    '''Get receipt data by UUID for repeat functionality'''
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT items, total, payments, operation_type, client_email, client_phone, company_sno, payment_address
+            FROM receipts 
+            WHERE uuid = %s AND user_id = %s
+        """, (uuid_str, user_id))
+        
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not row:
+            return None
+        
+        items = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+        payments = json.loads(row[2]) if isinstance(row[2], str) else row[2]
+        
+        receipt_data = {
+            'items': items,
+            'total': float(row[1]),
+            'payments': payments,
+            'operation_type': row[3] or 'sell',
+            'client': {
+                'email': row[4],
+                'phone': row[5]
+            },
+            'company': {
+                'sno': row[6] or 'usn_income',
+                'payment_address': row[7] or ''
+            }
+        }
+        
+        return receipt_data
+    except Exception as e:
+        print(f"[ERROR] Failed to get receipt by UUID: {e}")
         return None
 
 
