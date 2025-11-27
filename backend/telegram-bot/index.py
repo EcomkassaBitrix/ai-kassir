@@ -58,6 +58,24 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         message = update['message']
         chat_id = message['chat']['id']
+        chat_type = message['chat'].get('type', 'private')  # private, group, supergroup, channel
+        
+        # CRITICAL: Extract sender_id early for group support
+        sender_id = message.get('from', {}).get('id', chat_id)
+        
+        # CRITICAL: In groups, check if bot is mentioned
+        if chat_type in ['group', 'supergroup']:
+            text_raw = message.get('text', '')
+            # Check if message mentions bot (via @username or reply)
+            bot_mentioned = '@ecomkassa_ai_bot' in text_raw.lower() or message.get('reply_to_message', {}).get('from', {}).get('is_bot', False)
+            
+            if not bot_mentioned:
+                # Ignore messages in groups that don't mention bot
+                return create_response({'ok': True})
+            
+            # Remove bot mention from text for processing
+            text = text_raw.replace('@ecomkassa_ai_bot', '').replace('@Ecomkassa_ai_bot', '').strip()
+            message['text'] = text  # Update message text
         
         # Handle voice messages
         if 'voice' in message:
@@ -115,7 +133,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return create_response({'ok': True})
         
         if text.startswith('/history') or text.lower().strip() == 'история':
-            user_id = get_user_id_for_telegram(chat_id)
+            lookup_id = resolve_user_lookup_id(message)
+            user_id = get_user_id_for_telegram(lookup_id)
             history = get_user_receipts_history(user_id, limit=10)
             
             if not history:
@@ -151,7 +170,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if len(parts) == 2 and parts[1].isdigit():
                 # User wants to repeat specific receipt by UUID
                 uuid_to_find = parts[1]
-                user_id = get_user_id_for_telegram(chat_id)
+                lookup_id = resolve_user_lookup_id(message)
+                user_id = get_user_id_for_telegram(lookup_id)
                 
                 print(f"[DEBUG] Repeat by UUID: {uuid_to_find}, user_id: {user_id}, chat_id: {chat_id}")
                 
@@ -188,7 +208,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 return create_response({'ok': True})
         
         if text.startswith('/repeat') or text.lower().strip() in ['повтори', 'повтори последний', 'повтори запрос', 'повторить']:
-            user_id = get_user_id_for_telegram(chat_id)
+            lookup_id = resolve_user_lookup_id(message)
+            user_id = get_user_id_for_telegram(lookup_id)
             last_request = get_last_successful_request(chat_id)
             
             if not last_request:
@@ -206,8 +227,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             show_receipt_preview(bot_token, chat_id, preview_data, preview_id)
             return create_response({'ok': True})
         
-        user_id = get_user_id_for_telegram(chat_id)
-        print(f"[DEBUG] chat_id={chat_id}, resolved user_id='{user_id}'")
+        # CRITICAL: In groups, use sender's user_id, not group chat_id
+        lookup_id = resolve_user_lookup_id(message)
+        user_id = get_user_id_for_telegram(lookup_id)
+        print(f"[DEBUG] chat_id={chat_id}, chat_type={chat_type}, sender_id={sender_id}, lookup_id={lookup_id}, resolved user_id='{user_id}'")
         
         # CRITICAL: Clear context when user starts editing or sends /commands
         # This prevents stale context from interfering with new requests
@@ -924,6 +947,23 @@ def process_link_code(link_code: str, telegram_chat_id: int) -> Dict[str, str]:
         conn.close()
 
 
+def resolve_user_lookup_id(message: dict) -> int:
+    '''
+    Resolve correct ID for user lookup based on chat type
+    In groups: use sender's user ID
+    In private: use chat ID
+    '''
+    chat_type = message.get('chat', {}).get('type', 'private')
+    chat_id = message.get('chat', {}).get('id')
+    
+    if chat_type in ['group', 'supergroup']:
+        # In groups, use sender's ID
+        return message.get('from', {}).get('id', chat_id)
+    else:
+        # In private chats, use chat_id
+        return chat_id
+
+
 def get_user_id_for_telegram(telegram_chat_id: int) -> str:
     dsn = os.environ.get('DATABASE_URL')
     if not dsn:
@@ -955,10 +995,14 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
     message_id = callback_query['message']['message_id']
     callback_data = callback_query['data']
     
+    # CRITICAL: Resolve user ID for groups
+    # In groups, use the user who clicked the button, not the group ID
+    lookup_id = resolve_user_lookup_id(callback_query['message'])
+    
     # CRITICAL DEBUG: Log ALL incoming callback_data
     print(f"[DEBUG] ====== CALLBACK RECEIVED ======")
     print(f"[DEBUG] callback_data: '{callback_data}'")
-    print(f"[DEBUG] chat_id: {chat_id}, message_id: {message_id}")
+    print(f"[DEBUG] chat_id: {chat_id}, lookup_id: {lookup_id}, message_id: {message_id}")
     print(f"[DEBUG] ================================")
     
     # Answer callback query to remove loading state
@@ -1053,7 +1097,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
     elif callback_data.startswith('repeat_receipt_'):
         # Repeat receipt from history
         receipt_id = int(callback_data.replace('repeat_receipt_', ''))
-        user_id = get_user_id_for_telegram(chat_id)
+        user_id = get_user_id_for_telegram(lookup_id)
         
         # Load receipt data from database
         receipt_data = get_receipt_by_id(receipt_id, user_id)
