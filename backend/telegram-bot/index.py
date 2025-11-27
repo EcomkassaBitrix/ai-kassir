@@ -291,9 +291,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'refund_correction': 'Коррекция расхода'
             }
             
-            response_text += f"<b>Тип операции:</b> {operation_names_clean.get(operation_type, operation_type)}\n"
+            response_text += f"<b>Тип операции:</b> {operation_names_clean.get(operation_type, operation_type)}\n\n"
             
-            # Company info (SNO and payment address) - BEFORE items
+            # Company info (SNO and payment address) IMMEDIATELY after operation type
             company_data = receipt_data.get('company', {})
             sno = company_data.get('sno', 'usn_income')
             payment_address = company_data.get('payment_address', '')
@@ -1343,9 +1343,9 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             else:
                 response_text += f"<b>Тип документа:</b> 🧾 Чек\n"
             
-            response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n"
+            response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
             
-            # Company info (SNO and payment address) - BEFORE items
+            # Company info (SNO and payment address) IMMEDIATELY after operation type
             sno_back = company_data_back.get('sno', 'usn_income')
             payment_address_back = company_data_back.get('payment_address', '')
             
@@ -2489,9 +2489,9 @@ def show_receipt_preview(bot_token: str, chat_id: int, preview_data: Dict[str, A
     else:
         response_text += f"<b>Тип документа:</b> 🧾 Чек\n"
     
-    response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n"
+    response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
     
-    # Company info (SNO and payment address)
+    # Company info (SNO and payment address) IMMEDIATELY after operation type
     sno = company_data.get('sno', 'usn_income')
     payment_address = company_data.get('payment_address', '')
     
