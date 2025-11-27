@@ -2734,6 +2734,25 @@ def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id:
     if payment_address_preview:
         response_text += f"<b>📍 Адрес расчетов:</b> {payment_address_preview}\n"
     
+    # CRITICAL: Check balance between items total and payments total
+    # Calculate items total
+    items_total = sum(item.get('price', 0) * item.get('quantity', 1) for item in items)
+    # Calculate payments total
+    payments_total = sum(payment.get('sum', 0) for payment in payments)
+    
+    # Check if balanced (with 0.01 tolerance for float precision)
+    difference = round(items_total - payments_total, 2)
+    
+    if abs(difference) > 0.01:
+        if difference > 0:
+            # Items cost more than paid - client needs to pay more
+            response_text += f"\n⚠️ <b>Недоплата:</b> {abs(difference)}₽\n"
+            response_text += f"<i>Клиент должен доплатить {abs(difference)}₽</i>\n"
+        else:
+            # Paid more than items cost - need to return money
+            response_text += f"\n⚠️ <b>Переплата:</b> {abs(difference)}₽\n"
+            response_text += f"<i>Нужно вернуть клиенту {abs(difference)}₽</i>\n"
+    
     send_telegram_message_with_buttons(
         bot_token,
         chat_id,
