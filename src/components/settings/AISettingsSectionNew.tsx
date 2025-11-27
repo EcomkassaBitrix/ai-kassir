@@ -156,10 +156,17 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
           Выберите активного провайдера для обработки запросов. API-ключи хранятся в секретах проекта.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-6">
         
-        {/* Модальное окно выбора модели */}
-        {modelSelectMode && (
+        {/* Раздел 1: Распознавание текста */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 mb-4">
+            <Icon name="MessageSquare" size={20} className="text-blue-400" />
+            <h3 className="text-lg font-semibold text-white">Распознавание текста</h3>
+          </div>
+          
+          {/* Модальное окно выбора модели */}
+          {modelSelectMode && (
           <div className="bg-blue-950/30 border border-blue-800 rounded-xl p-4">
             <div className="flex items-center gap-2 text-blue-400 mb-3">
               <Icon name="Sparkles" size={16} />
@@ -257,6 +264,14 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
             </div>
           );
         })}
+        </div>
+
+        {/* Раздел 2: Распознавание голоса */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 mb-4">
+            <Icon name="Mic" size={20} className="text-purple-400" />
+            <h3 className="text-lg font-semibold text-white">Распознавание голоса</h3>
+          </div>
 
         {/* Активный провайдер голоса */}
         {activeSpeechProvider && !modelSelectMode && (
@@ -318,6 +333,8 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
             </div>
           );
         })}
+        </div>
+
       </CardContent>
     </Card>
   );
