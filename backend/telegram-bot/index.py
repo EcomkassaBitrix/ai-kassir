@@ -829,10 +829,9 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             provider_id = provider.get('id')
             provider_desc = provider.get('description', f'Провайдер {provider_id}')
             
-            # Clean provider description: remove common prefixes
+            # Clean provider description: remove specific prefixes
             provider_desc = provider_desc.replace('Платёж через счёт ', '')
             provider_desc = provider_desc.replace('Платёж через эквайринг ', '')
-            provider_desc = provider_desc.replace('Платёж через СБП ', '')
             provider_desc = provider_desc.replace('Платёж через ', '')
             # Remove quotes around provider names
             provider_desc = provider_desc.replace('"', '')
