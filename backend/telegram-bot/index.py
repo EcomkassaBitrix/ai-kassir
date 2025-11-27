@@ -58,7 +58,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         message = update['message']
         chat_id = message['chat']['id']
-        text = message.get('text', '')
+        
+        # Handle voice messages
+        if 'voice' in message:
+            voice_result = handle_voice_message(message, bot_token)
+            if voice_result.get('error'):
+                send_telegram_message(bot_token, chat_id, f"❌ Ошибка: {voice_result['error']}")
+                return create_response({'ok': True})
+            text = voice_result.get('text', '')
+            print(f"[DEBUG] Voice transcribed: {text}")
+        else:
+            text = message.get('text', '')
         
         if text.startswith('/start'):
             link_code = text.replace('/start', '').strip()
@@ -1432,3 +1442,98 @@ def get_bot_token() -> str:
         return default_token
     except Exception:
         return default_token
+
+
+def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
+    '''
+    Download voice message and transcribe using OpenAI Whisper
+    Returns: {'text': transcribed_text} or {'error': message}
+    '''
+    import tempfile
+    import base64
+    
+    voice = message.get('voice', {})
+    file_id = voice.get('file_id')
+    
+    if not file_id:
+        return {'error': 'Voice file_id not found'}
+    
+    # Get file path from Telegram
+    try:
+        file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+        file_info_req = urllib.request.Request(file_info_url)
+        file_info_resp = urllib.request.urlopen(file_info_req, timeout=10)
+        file_info_data = json.loads(file_info_resp.read().decode('utf-8'))
+        
+        if not file_info_data.get('ok'):
+            return {'error': 'Failed to get file info from Telegram'}
+        
+        file_path = file_info_data['result']['file_path']
+        file_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+        
+        # Download voice file
+        file_req = urllib.request.Request(file_url)
+        file_resp = urllib.request.urlopen(file_req, timeout=30)
+        voice_data = file_resp.read()
+        
+        # Transcribe with OpenAI Whisper
+        openai_key = os.environ.get('GPTUNNEL_API_KEY')
+        if not openai_key:
+            return {'error': 'OpenAI API key not configured'}
+        
+        # Prepare multipart/form-data request
+        boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW'
+        body_parts = []
+        
+        # Add file
+        body_parts.append(f'--{boundary}'.encode())
+        body_parts.append(b'Content-Disposition: form-data; name="file"; filename="voice.ogg"')
+        body_parts.append(b'Content-Type: audio/ogg')
+        body_parts.append(b'')
+        body_parts.append(voice_data)
+        
+        # Add model
+        body_parts.append(f'--{boundary}'.encode())
+        body_parts.append(b'Content-Disposition: form-data; name="model"')
+        body_parts.append(b'')
+        body_parts.append(b'whisper-1')
+        
+        # Add language hint
+        body_parts.append(f'--{boundary}'.encode())
+        body_parts.append(b'Content-Disposition: form-data; name="language"')
+        body_parts.append(b'')
+        body_parts.append(b'ru')
+        
+        body_parts.append(f'--{boundary}--'.encode())
+        
+        body = b'\r\n'.join(body_parts)
+        
+        # Call OpenAI Whisper API
+        whisper_url = 'https://gptunnel.ru/v1/audio/transcriptions'
+        whisper_req = urllib.request.Request(
+            whisper_url,
+            data=body,
+            headers={
+                'Authorization': f'Bearer {openai_key}',
+                'Content-Type': f'multipart/form-data; boundary={boundary}'
+            },
+            method='POST'
+        )
+        
+        whisper_resp = urllib.request.urlopen(whisper_req, timeout=30)
+        whisper_data = json.loads(whisper_resp.read().decode('utf-8'))
+        
+        transcribed_text = whisper_data.get('text', '').strip()
+        
+        if not transcribed_text:
+            return {'error': 'Could not transcribe voice message'}
+        
+        return {'text': transcribed_text}
+        
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8') if e.fp else ''
+        print(f"[ERROR] Voice transcription failed: {e.code} {error_body}")
+        return {'error': f'HTTP error {e.code}'}
+    except Exception as e:
+        print(f"[ERROR] Voice handling failed: {e}")
+        return {'error': str(e)}
