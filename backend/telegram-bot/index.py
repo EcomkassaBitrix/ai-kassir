@@ -999,7 +999,6 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             
             # CRITICAL: Check if this is a payment link receipt
             payment_link = receipt_result.get('payment_link', '')
-            qr_code = receipt_result.get('qr_code', '')
             
             # Check if payment_link_enabled in receipt_data (edited data from preview)
             is_payment_link = bool(payment_link) or receipt_data.get('payment_link_enabled', False)
@@ -1029,13 +1028,9 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             
             edit_message(bot_token, chat_id, message_id, response_text)
             
-            # CRITICAL: Send QR code as photo - from Ecomkassa or generate from link
-            if qr_code:
-                # QR code from Ecomkassa API (URL)
-                send_photo(bot_token, chat_id, qr_code, "📱 Отсканируй QR-код для оплаты")
-            elif payment_link:
-                # Generate QR code from payment link
-                print(f"[DEBUG] No QR from API, generating from link: {payment_link[:50]}...")
+            # CRITICAL: Generate and send QR code from payment link
+            if payment_link:
+                print(f"[DEBUG] Generating QR code from link: {payment_link[:50]}...")
                 qr_data_url = generate_qr_code(payment_link)
                 if qr_data_url:
                     send_photo_base64(bot_token, chat_id, qr_data_url, "📱 Отсканируй QR-код для оплаты")

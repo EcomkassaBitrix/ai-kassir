@@ -1968,7 +1968,6 @@ def create_ecomkassa_receipt(
             permalink = response_data.get('permalink', '')
             
             payment_link = response_data.get('invoice_payload', {}).get('link', '')
-            qr_code = response_data.get('qr_code', '')
             
             return {
                 'success': True,
@@ -1976,7 +1975,6 @@ def create_ecomkassa_receipt(
                 'uuid': uuid,
                 'permalink': permalink,
                 'payment_link': payment_link,
-                'qr_code': qr_code,
                 'receipt': receipt_data,
                 'ecomkassa_response': response_data,
                 'operation_type': operation_type
