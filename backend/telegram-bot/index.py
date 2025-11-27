@@ -613,7 +613,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         delete_preview_data(preview_id)
     
     # CRITICAL: Check specific edit_* patterns BEFORE general edit_
-    elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_payment_') or callback_data.startswith('edit_operation_type_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
+    elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_measure_') or callback_data.startswith('edit_vat_') or callback_data.startswith('edit_payment_object_') or callback_data.startswith('edit_payment_method_') or callback_data.startswith('edit_payment_type_') or callback_data.startswith('edit_payment_sum_') or callback_data.startswith('edit_sno_') or callback_data.startswith('edit_payment_address_') or callback_data.startswith('edit_operation_type_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
         # Extract field type and preview_id
         print(f"[DEBUG] Edit field button clicked! callback_data: {callback_data}")
         if callback_data.startswith('edit_item_'):
@@ -628,21 +628,107 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             field = 'quantity'
             preview_id = callback_data.replace('edit_quantity_', '')
             prompt_text = "📊 <b>Изменить количество</b>\n\nОтправь новое количество числом.\n\nНапример: <code>2</code>"
-        elif callback_data.startswith('edit_payment_'):
-            field = 'payment'
-            preview_id = callback_data.replace('edit_payment_', '')
-            prompt_text = "💳 <b>Выбери способ оплаты:</b>"
+        elif callback_data.startswith('edit_measure_'):
+            field = 'measure'
+            preview_id = callback_data.replace('edit_measure_', '')
+            prompt_text = "📏 <b>Выбери единицу измерения:</b>"
+            
+            measure_buttons = [
+                [{"text": "шт", "callback_data": f"set_measure_шт_{preview_id}"}],
+                [{"text": "кг", "callback_data": f"set_measure_кг_{preview_id}"}],
+                [{"text": "л", "callback_data": f"set_measure_л_{preview_id}"}],
+                [{"text": "м", "callback_data": f"set_measure_м_{preview_id}"}],
+                [{"text": "услуга", "callback_data": f"set_measure_услуга_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_group_items_{preview_id}"}]
+            ]
+            
+            edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, measure_buttons)
+            return create_response({'ok': True})
+        elif callback_data.startswith('edit_vat_'):
+            field = 'vat'
+            preview_id = callback_data.replace('edit_vat_', '')
+            prompt_text = "🧾 <b>Выбери ставку НДС:</b>"
+            
+            vat_buttons = [
+                [{"text": "Без НДС", "callback_data": f"set_vat_none_{preview_id}"}],
+                [{"text": "НДС 0%", "callback_data": f"set_vat_vat0_{preview_id}"}],
+                [{"text": "НДС 10%", "callback_data": f"set_vat_vat10_{preview_id}"}],
+                [{"text": "НДС 20%", "callback_data": f"set_vat_vat20_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_group_items_{preview_id}"}]
+            ]
+            
+            edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, vat_buttons)
+            return create_response({'ok': True})
+        elif callback_data.startswith('edit_payment_object_'):
+            field = 'payment_object'
+            preview_id = callback_data.replace('edit_payment_object_', '')
+            prompt_text = "📦 <b>Выбери предмет расчета:</b>"
+            
+            object_buttons = [
+                [{"text": "Товар", "callback_data": f"set_payment_object_commodity_{preview_id}"}],
+                [{"text": "Услуга", "callback_data": f"set_payment_object_service_{preview_id}"}],
+                [{"text": "Работа", "callback_data": f"set_payment_object_job_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_group_items_{preview_id}"}]
+            ]
+            
+            edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, object_buttons)
+            return create_response({'ok': True})
+        elif callback_data.startswith('edit_payment_method_'):
+            field = 'payment_method'
+            preview_id = callback_data.replace('edit_payment_method_', '')
+            prompt_text = "💵 <b>Выбери признак расчета:</b>"
+            
+            method_buttons = [
+                [{"text": "Полный расчет", "callback_data": f"set_payment_method_full_payment_{preview_id}"}],
+                [{"text": "Предоплата 100%", "callback_data": f"set_payment_method_full_prepayment_{preview_id}"}],
+                [{"text": "Предоплата", "callback_data": f"set_payment_method_prepayment_{preview_id}"}],
+                [{"text": "Аванс", "callback_data": f"set_payment_method_advance_{preview_id}"}],
+                [{"text": "Частичный расчет", "callback_data": f"set_payment_method_partial_payment_{preview_id}"}],
+                [{"text": "Кредит", "callback_data": f"set_payment_method_credit_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_group_items_{preview_id}"}]
+            ]
+            
+            edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, method_buttons)
+            return create_response({'ok': True})
+        elif callback_data.startswith('edit_payment_type_'):
+            field = 'payment_type'
+            preview_id = callback_data.replace('edit_payment_type_', '')
+            prompt_text = "💳 <b>Выбери тип оплаты:</b>"
             
             payment_buttons = [
                 [{"text": "💵 Наличные", "callback_data": f"set_payment_0_{preview_id}"}],
                 [{"text": "💳 Безналичный", "callback_data": f"set_payment_1_{preview_id}"}],
                 [{"text": "📝 Предоплата", "callback_data": f"set_payment_2_{preview_id}"}],
                 [{"text": "🏦 Кредит", "callback_data": f"set_payment_3_{preview_id}"}],
-                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+                [{"text": "« Назад", "callback_data": f"edit_group_payment_{preview_id}"}]
             ]
             
             edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, payment_buttons)
             return create_response({'ok': True})
+        elif callback_data.startswith('edit_payment_sum_'):
+            field = 'payment_sum'
+            preview_id = callback_data.replace('edit_payment_sum_', '')
+            prompt_text = "💰 <b>Изменить сумму оплаты</b>\n\nОтправь новую сумму числом.\n\nНапример: <code>1500</code>"
+        elif callback_data.startswith('edit_sno_'):
+            field = 'sno'
+            preview_id = callback_data.replace('edit_sno_', '')
+            prompt_text = "💼 <b>Выбери систему налогообложения:</b>"
+            
+            sno_buttons = [
+                [{"text": "УСН доход", "callback_data": f"set_sno_usn_income_{preview_id}"}],
+                [{"text": "УСН доход-расход", "callback_data": f"set_sno_usn_income_outcome_{preview_id}"}],
+                [{"text": "ОСНО", "callback_data": f"set_sno_osn_{preview_id}"}],
+                [{"text": "ЕСХН", "callback_data": f"set_sno_esn_{preview_id}"}],
+                [{"text": "Патент", "callback_data": f"set_sno_patent_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_group_company_{preview_id}"}]
+            ]
+            
+            edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, sno_buttons)
+            return create_response({'ok': True})
+        elif callback_data.startswith('edit_payment_address_'):
+            field = 'payment_address'
+            preview_id = callback_data.replace('edit_payment_address_', '')
+            prompt_text = "📍 <b>Изменить адрес расчетов</b>\n\nОтправь новый адрес текстом.\n\nНапример: <code>example.com</code>"
         elif callback_data.startswith('edit_operation_type_'):
             field = 'operation_type'
             preview_id = callback_data.replace('edit_operation_type_', '')
@@ -682,21 +768,79 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
             return create_response({'ok': True})
         
-        # Show edit menu with options
-        edit_text = "✏️ <b>Что изменить?</b>\n\nВыбери поле для редактирования:"
+        # Show main edit menu with groups
+        edit_text = "✏️ <b>Что изменить?</b>\n\nВыбери раздел для редактирования:"
         
         edit_buttons = [
-            [{"text": "📝 Товар/Услугу", "callback_data": f"edit_item_{preview_id}"}],
-            [{"text": "💰 Цену", "callback_data": f"edit_price_{preview_id}"}],
-            [{"text": "📊 Количество", "callback_data": f"edit_quantity_{preview_id}"}],
-            [{"text": "💳 Способ оплаты", "callback_data": f"edit_payment_{preview_id}"}],
-            [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
-            [{"text": "📧 Email клиента", "callback_data": f"edit_email_{preview_id}"}],
-            [{"text": "📱 Телефон клиента", "callback_data": f"edit_phone_{preview_id}"}],
+            [{"text": "📄 Тип документа", "callback_data": f"edit_group_doc_{preview_id}"}],
+            [{"text": "🏢 Данные компании", "callback_data": f"edit_group_company_{preview_id}"}],
+            [{"text": "👤 Данные клиента", "callback_data": f"edit_group_client_{preview_id}"}],
+            [{"text": "🛒 Товары и услуги", "callback_data": f"edit_group_items_{preview_id}"}],
+            [{"text": "💳 Способ оплаты", "callback_data": f"edit_group_payment_{preview_id}"}],
             [{"text": "« Назад к чеку", "callback_data": f"back_{preview_id}"}]
         ]
         
         edit_message_with_buttons(bot_token, chat_id, message_id, edit_text, edit_buttons)
+    
+    elif callback_data.startswith('edit_group_'):
+        # Handle group menu selections
+        group_type = callback_data.replace('edit_group_', '').split('_')[0]
+        preview_id = '_'.join(callback_data.replace('edit_group_', '').split('_')[1:])
+        
+        preview_data = get_preview_data(preview_id)
+        if not preview_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
+        
+        if group_type == 'doc':
+            # Тип документа
+            group_text = "📄 <b>Тип документа</b>\n\nВыбери параметр:"
+            group_buttons = [
+                [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+            ]
+        elif group_type == 'company':
+            # Данные компании
+            group_text = "🏢 <b>Данные компании</b>\n\nВыбери параметр:"
+            group_buttons = [
+                [{"text": "💼 СНО", "callback_data": f"edit_sno_{preview_id}"}],
+                [{"text": "📍 Адрес расчетов", "callback_data": f"edit_payment_address_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+            ]
+        elif group_type == 'client':
+            # Данные клиента
+            group_text = "👤 <b>Данные клиента</b>\n\nВыбери параметр:"
+            group_buttons = [
+                [{"text": "📧 Email клиента", "callback_data": f"edit_email_{preview_id}"}],
+                [{"text": "📱 Телефон клиента", "callback_data": f"edit_phone_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+            ]
+        elif group_type == 'items':
+            # Товары и услуги
+            group_text = "🛒 <b>Товары и услуги</b>\n\nВыбери параметр:"
+            group_buttons = [
+                [{"text": "📝 Название", "callback_data": f"edit_item_{preview_id}"}],
+                [{"text": "💰 Цена", "callback_data": f"edit_price_{preview_id}"}],
+                [{"text": "📊 Количество", "callback_data": f"edit_quantity_{preview_id}"}],
+                [{"text": "📏 Ед. измерения", "callback_data": f"edit_measure_{preview_id}"}],
+                [{"text": "🧾 НДС", "callback_data": f"edit_vat_{preview_id}"}],
+                [{"text": "📦 Предмет расчета", "callback_data": f"edit_payment_object_{preview_id}"}],
+                [{"text": "💵 Признак расчета", "callback_data": f"edit_payment_method_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+            ]
+        elif group_type == 'payment':
+            # Способ оплаты
+            group_text = "💳 <b>Способ оплаты</b>\n\nВыбери параметр:"
+            group_buttons = [
+                [{"text": "💳 Тип оплаты", "callback_data": f"edit_payment_type_{preview_id}"}],
+                [{"text": "💰 Сумма", "callback_data": f"edit_payment_sum_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+            ]
+        else:
+            edit_message(bot_token, chat_id, message_id, "❌ Неизвестная группа")
+            return create_response({'ok': True})
+        
+        edit_message_with_buttons(bot_token, chat_id, message_id, group_text, group_buttons)
     
     elif callback_data.startswith('back_'):
         preview_id = callback_data.replace('back_', '')
@@ -844,6 +988,101 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         time.sleep(1)
         
         # Trigger back button logic
+        callback_query['data'] = f"back_{preview_id}"
+        return handle_callback_query(callback_query, bot_token)
+    
+    elif callback_data.startswith('set_measure_'):
+        parts = callback_data.replace('set_measure_', '').split('_')
+        measure = parts[0]
+        preview_id = '_'.join(parts[1:])
+        
+        update_preview_field_value(preview_id, 'measure', measure)
+        
+        edit_message(bot_token, chat_id, message_id, f"✅ Единица измерения изменена на: {measure}\n\nВозвращаю к чеку...")
+        
+        import time
+        time.sleep(1)
+        
+        callback_query['data'] = f"back_{preview_id}"
+        return handle_callback_query(callback_query, bot_token)
+    
+    elif callback_data.startswith('set_vat_'):
+        parts = callback_data.replace('set_vat_', '').split('_')
+        vat = parts[0]
+        preview_id = '_'.join(parts[1:])
+        
+        update_preview_field_value(preview_id, 'vat', vat)
+        
+        vat_names = {'none': 'Без НДС', 'vat0': 'НДС 0%', 'vat10': 'НДС 10%', 'vat20': 'НДС 20%'}
+        edit_message(bot_token, chat_id, message_id, f"✅ НДС изменен на: {vat_names.get(vat, vat)}\n\nВозвращаю к чеку...")
+        
+        import time
+        time.sleep(1)
+        
+        callback_query['data'] = f"back_{preview_id}"
+        return handle_callback_query(callback_query, bot_token)
+    
+    elif callback_data.startswith('set_payment_object_'):
+        parts = callback_data.replace('set_payment_object_', '').split('_')
+        payment_object = parts[0]
+        preview_id = '_'.join(parts[1:])
+        
+        update_preview_field_value(preview_id, 'payment_object', payment_object)
+        
+        object_names = {'commodity': 'Товар', 'service': 'Услуга', 'job': 'Работа'}
+        edit_message(bot_token, chat_id, message_id, f"✅ Предмет расчета изменен на: {object_names.get(payment_object, payment_object)}\n\nВозвращаю к чеку...")
+        
+        import time
+        time.sleep(1)
+        
+        callback_query['data'] = f"back_{preview_id}"
+        return handle_callback_query(callback_query, bot_token)
+    
+    elif callback_data.startswith('set_payment_method_'):
+        parts = callback_data.replace('set_payment_method_', '').split('_')
+        payment_method = '_'.join(parts[:-1]) if len(parts) > 1 else parts[0]
+        # Extract preview_id which is the last part after splitting by '_'
+        preview_id_parts = callback_data.split('_')
+        preview_id = preview_id_parts[-1]
+        
+        update_preview_field_value(preview_id, 'payment_method', payment_method)
+        
+        method_names = {
+            'full_payment': 'Полный расчет',
+            'full_prepayment': 'Предоплата 100%',
+            'prepayment': 'Предоплата',
+            'advance': 'Аванс',
+            'partial_payment': 'Частичный расчет',
+            'credit': 'Кредит'
+        }
+        edit_message(bot_token, chat_id, message_id, f"✅ Признак расчета изменен на: {method_names.get(payment_method, payment_method)}\n\nВозвращаю к чеку...")
+        
+        import time
+        time.sleep(1)
+        
+        callback_query['data'] = f"back_{preview_id}"
+        return handle_callback_query(callback_query, bot_token)
+    
+    elif callback_data.startswith('set_sno_'):
+        parts = callback_data.replace('set_sno_', '').split('_')
+        sno = '_'.join(parts[:-1]) if len(parts) > 1 else parts[0]
+        preview_id_parts = callback_data.split('_')
+        preview_id = preview_id_parts[-1]
+        
+        update_preview_field_value(preview_id, 'sno', sno)
+        
+        sno_names = {
+            'usn_income': 'УСН доход',
+            'usn_income_outcome': 'УСН доход-расход',
+            'osn': 'ОСНО',
+            'esn': 'ЕСХН',
+            'patent': 'Патент'
+        }
+        edit_message(bot_token, chat_id, message_id, f"✅ СНО изменена на: {sno_names.get(sno, sno)}\n\nВозвращаю к чеку...")
+        
+        import time
+        time.sleep(1)
+        
         callback_query['data'] = f"back_{preview_id}"
         return handle_callback_query(callback_query, bot_token)
     
@@ -1323,6 +1562,24 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
                 receipt_data['client'] = {}
             receipt_data['client']['phone'] = new_value
             print(f"[DEBUG] Updated phone to: {new_value}")
+        elif field == 'payment_sum':
+            try:
+                payment_sum = float(new_value.replace('₽', '').replace('руб', '').strip())
+                if receipt_data.get('payments') and len(receipt_data['payments']) > 0:
+                    receipt_data['payments'][0]['sum'] = payment_sum
+                    receipt_data['total'] = payment_sum
+                    print(f"[DEBUG] Updated payment sum to: {payment_sum}")
+                else:
+                    print(f"[ERROR] No payments found in receipt_data")
+                    return False
+            except ValueError as ve:
+                print(f"[ERROR] Invalid payment sum value: {new_value}, error: {ve}")
+                return False
+        elif field == 'payment_address':
+            if 'company' not in receipt_data:
+                receipt_data['company'] = {}
+            receipt_data['company']['payment_address'] = new_value
+            print(f"[DEBUG] Updated payment_address to: {new_value}")
         else:
             print(f"[ERROR] Unknown field: {field}")
             return False
@@ -1667,5 +1924,69 @@ def update_preview_operation_type(preview_id: str, operation_type: str) -> bool:
         
     except Exception as e:
         print(f"[ERROR] Failed to update preview operation_type: {str(e)}")
+        return False
+
+
+def update_preview_field_value(preview_id: str, field: str, value: str) -> bool:
+    """Update a specific field value in telegram_previews receipt_data items or company"""
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return False
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT receipt_data FROM telegram_previews WHERE preview_id = %s",
+            (preview_id,)
+        )
+        result = cur.fetchone()
+        
+        if not result or not result[0]:
+            print(f"[ERROR] No receipt_data found for preview_id: {preview_id}")
+            cur.close()
+            conn.close()
+            return False
+        
+        receipt_data = result[0]
+        
+        # Update field based on type
+        if field in ['measure', 'vat', 'payment_object', 'payment_method']:
+            # These fields are in items
+            if receipt_data.get('items') and len(receipt_data['items']) > 0:
+                receipt_data['items'][0][field] = value
+                print(f"[DEBUG] Updated {field} to {value} in items")
+            else:
+                print(f"[ERROR] No items found in receipt_data")
+                cur.close()
+                conn.close()
+                return False
+        elif field in ['sno', 'payment_address']:
+            # These fields are in company
+            if 'company' not in receipt_data:
+                receipt_data['company'] = {}
+            receipt_data['company'][field] = value
+            print(f"[DEBUG] Updated {field} to {value} in company")
+        else:
+            print(f"[ERROR] Unknown field: {field}")
+            cur.close()
+            conn.close()
+            return False
+        
+        cur.execute(
+            "UPDATE telegram_previews SET receipt_data = %s WHERE preview_id = %s",
+            (json.dumps(receipt_data), preview_id)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print(f"[SUCCESS] Updated {field} for preview {preview_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to update preview field {field}: {str(e)}")
         return False
         return {'error': str(e)}
