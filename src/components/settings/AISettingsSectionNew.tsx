@@ -31,7 +31,9 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
   const [modelSelectMode, setModelSelectMode] = useState(false);
   const [tempProvider, setTempProvider] = useState<string>('');
   const [yandexSpeechKitKey, setYandexSpeechKitKey] = useState<string>('');
+  const [gptunnelApiKey, setGptunnelApiKey] = useState<string>('');
   const [showKeyInput, setShowKeyInput] = useState(false);
+  const [showGptunnelKeyInput, setShowGptunnelKeyInput] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -55,6 +57,7 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
       setAvailableModels(data.available_models || []);
       setProviders(data.available_providers || []);
       setYandexSpeechKitKey(data.yandex_speechkit_key || '');
+      setGptunnelApiKey(data.gptunnel_api_key || '');
     } catch (error) {
       toast.error('Ошибка загрузки настроек ИИ');
     } finally {
@@ -73,6 +76,10 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
       
       if (providerId === 'yandex_speechkit' && speechKitKey) {
         body.yandex_speechkit_key = speechKitKey;
+      }
+      
+      if (providerId === 'gptunnel_chatgpt' && gptunnelApiKey) {
+        body.gptunnel_api_key = gptunnelApiKey;
       }
       
       const response = await fetch('https://functions.poehali.dev/0924c3f7-bb48-46bb-9dbb-fddba37c9280', {
@@ -107,7 +114,8 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
       if (isValid) {
         setActiveProvider('');
         setSelectedModel(null);
-        setYandexSpeechKitKey(''); // Очищаем ключ при отключении
+        setYandexSpeechKitKey('');
+        setGptunnelApiKey('');
         toast.success('Провайдер отключен');
         await loadSettings();
       }
@@ -115,9 +123,8 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
     }
     
     if (providerId === 'gptunnel_chatgpt') {
-      setTempProvider(providerId);
-      setModelSelectMode(true);
-      await loadSettings();
+      // Показываем форму ввода ключа GPTunnel
+      setShowGptunnelKeyInput(true);
     } else if (providerId === 'yandex_speechkit') {
       // Всегда показываем форму ввода ключа
       setShowKeyInput(true);
@@ -134,21 +141,90 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
   };
 
   const handleModelSelect = async (modelId: string) => {
-    const isValid = await validateKey(tempProvider, modelId);
+    const validatingToast = toast.loading('Активирую провайдер...');
     
-    if (isValid) {
+    try {
+      const response = await fetch('https://functions.poehali.dev/0924c3f7-bb48-46bb-9dbb-fddba37c9280', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Token': adminToken
+        },
+        body: JSON.stringify({
+          provider_id: tempProvider,
+          selected_model: modelId,
+          gptunnel_api_key: gptunnelApiKey
+        })
+      });
+
+      const data = await response.json();
+      toast.dismiss(validatingToast);
+
+      if (!response.ok) {
+        toast.error(data.message || data.error || 'Ошибка активации');
+        return;
+      }
+
       setActiveProvider(tempProvider);
       setSelectedModel(modelId);
       setModelSelectMode(false);
       toast.success('Провайдер с моделью активирован ✓');
       await loadSettings();
+    } catch (error) {
+      toast.dismiss(validatingToast);
+      toast.error('Ошибка подключения');
     }
   };
 
   const handleChangeModel = async () => {
     setTempProvider('gptunnel_chatgpt');
     setModelSelectMode(true);
-    await loadSettings(); // Загрузить модели
+    await loadSettings();
+  };
+
+  const handleGptunnelKeySubmit = async () => {
+    if (!gptunnelApiKey.trim()) {
+      toast.error('Введите API ключ GPTunnel');
+      return;
+    }
+    
+    // Валидируем ключ и загружаем модели
+    const validatingToast = toast.loading('Проверяю API ключ...');
+    
+    try {
+      const response = await fetch('https://gptunnel.ru/v1/models', {
+        headers: {'Authorization': gptunnelApiKey},
+        timeout: 15000
+      });
+      
+      toast.dismiss(validatingToast);
+      
+      if (!response.ok) {
+        toast.error('Невалидный API ключ GPTunnel');
+        return;
+      }
+      
+      const data = await response.json();
+      const models = data.data?.map((m: any) => ({
+        id: m.id,
+        name: m.title || m.id,
+        type: m.type || 'TEXT'
+      })) || [];
+      
+      if (models.length === 0) {
+        toast.error('Не удалось загрузить модели');
+        return;
+      }
+      
+      setAvailableModels(models);
+      setShowGptunnelKeyInput(false);
+      setTempProvider('gptunnel_chatgpt');
+      setModelSelectMode(true);
+      toast.success('Ключ валиден ✓');
+    } catch (error) {
+      toast.dismiss(validatingToast);
+      toast.error('Ошибка подключения');
+    }
   };
 
   const handleSpeechKitActivate = async () => {
@@ -200,8 +276,43 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
             <h3 className="text-lg font-semibold text-white">Распознавание текста</h3>
           </div>
           
+          {/* Форма ввода ключа GPTunnel */}
+          {showGptunnelKeyInput && !modelSelectMode && (
+            <div className="bg-blue-950/30 border border-blue-800 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-blue-400 mb-3">
+                <Icon name="Key" size={16} />
+                <span className="font-semibold">Введите API ключ GPTunnel</span>
+              </div>
+              <input
+                type="text"
+                value={gptunnelApiKey}
+                onChange={(e) => setGptunnelApiKey(e.target.value)}
+                placeholder="Bearer sk-..."
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-600 mb-3"
+              />
+              <div className="flex gap-2">
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleGptunnelKeySubmit}
+                  className="flex-1"
+                >
+                  Продолжить
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowGptunnelKeyInput(false)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  Отмена
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Модальное окно выбора модели */}
-          {modelSelectMode && (
+          {modelSelectMode && !showGptunnelKeyInput && (
           <div className="bg-blue-950/30 border border-blue-800 rounded-xl p-4">
             <div className="flex items-center gap-2 text-blue-400 mb-3">
               <Icon name="Sparkles" size={16} />
@@ -281,32 +392,28 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
         )}
 
         {/* Список провайдеров текста */}
-        {!modelSelectMode && textProviders.map((provider) => {
+        {!modelSelectMode && !showGptunnelKeyInput && textProviders.map((provider) => {
           const isActive = activeProvider === provider.id;
           if (isActive) return null;
 
           return (
             <div
               key={provider.id}
-              className="bg-green-950/10 border border-green-800/30 rounded-xl p-4 flex items-center justify-between"
+              className="bg-gray-900 border border-gray-700 rounded-xl p-4 flex items-center justify-between"
             >
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold text-white">{provider.name}</h3>
-                  <span className="text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded-full">
-                    Активно
-                  </span>
                 </div>
-                <p className="text-sm text-green-600 mt-1">{provider.description}</p>
+                <p className="text-sm text-gray-400 mt-1">{provider.description}</p>
               </div>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handleProviderChange(provider.id)}
-                disabled={!provider.has_secret}
-                className="bg-transparent border-green-700 text-green-400 hover:bg-green-950/30"
+                className="bg-transparent border-gray-600 text-gray-300 hover:bg-gray-800"
               >
-                Активировать
+                Настроить
               </Button>
             </div>
           );

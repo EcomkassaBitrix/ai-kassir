@@ -191,8 +191,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'id': 'gptunnel_chatgpt',
             'name': 'GPTunnel (мультимодели)',
             'description': 'Доступ к GPT, DeepSeek, Gemini и другим моделям',
-            'secret_name': 'GPTUNNEL_API_KEY',
-            'has_secret': bool(os.environ.get('GPTUNNEL_API_KEY'))
+            'secret_name': None,
+            'has_secret': False
         },
         {
             'id': 'yandex_speechkit',
@@ -207,26 +207,30 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     cur = conn.cursor()
     
     if method == 'GET':
-        cur.execute("SELECT active_provider, selected_model, yandex_speechkit_key FROM ai_settings ORDER BY id DESC LIMIT 1")
+        cur.execute("SELECT active_provider, selected_model, yandex_speechkit_key, gptunnel_api_key FROM ai_settings ORDER BY id DESC LIMIT 1")
         row = cur.fetchone()
         active_provider = row[0] if row else ''
         selected_model = row[1] if row and len(row) > 1 else None
         yandex_speechkit_key = row[2] if row and len(row) > 2 else None
+        gptunnel_api_key = row[3] if row and len(row) > 3 else None
         
-        # Update has_secret for yandex_speechkit based on DB
+        # Update has_secret based on DB
         for provider in available_providers:
             if provider['id'] == 'yandex_speechkit':
                 provider['has_secret'] = bool(yandex_speechkit_key)
+            elif provider['id'] == 'gptunnel_chatgpt':
+                provider['has_secret'] = bool(gptunnel_api_key)
         
         response_data = {
             'active_provider': active_provider,
             'selected_model': selected_model,
             'available_providers': available_providers,
-            'yandex_speechkit_key': yandex_speechkit_key if yandex_speechkit_key else None
+            'yandex_speechkit_key': yandex_speechkit_key if yandex_speechkit_key else None,
+            'gptunnel_api_key': gptunnel_api_key if gptunnel_api_key else None
         }
         
         if active_provider == 'gptunnel_chatgpt':
-            api_key = os.environ.get('GPTUNNEL_API_KEY', '')
+            api_key = gptunnel_api_key or os.environ.get('GPTUNNEL_API_KEY', '')
             if api_key:
                 models_result = get_gptunnel_models(api_key)
                 if models_result['success']:
@@ -247,6 +251,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         provider_id: str = body_data.get('provider_id', '')
         selected_model: str = body_data.get('selected_model', None)
         yandex_speechkit_key: str = body_data.get('yandex_speechkit_key', None)
+        gptunnel_api_key: str = body_data.get('gptunnel_api_key', None)
         
         if provider_id and provider_id not in [p['id'] for p in available_providers]:
             cur.close()
@@ -258,28 +263,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
         
         provider = next((p for p in available_providers if p['id'] == provider_id), None)
-        # Skip secret check for yandex_speechkit as it uses DB storage
-        if provider_id and provider_id != 'yandex_speechkit' and provider and not provider['has_secret']:
-            cur.close()
-            conn.close()
-            return {
-                'statusCode': 400,
-                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': f'Secret {provider["secret_name"]} not configured'})
-            }
+        # Skip secret check - all providers use DB storage now
         
         if not provider_id:
             validation_result = {'valid': True, 'message': 'Disabling provider'}
-        elif provider_id == 'gigachat':
-            auth_key = os.environ.get('GIGACHAT_AUTH_KEY', '')
-            validation_result = validate_gigachat_key(auth_key)
-        elif provider_id == 'yandexgpt':
-            api_key = os.environ.get('YANDEXGPT_API_KEY', '')
-            folder_id = os.environ.get('YANDEXGPT_FOLDER_ID', '')
-            validation_result = validate_yandexgpt_key(api_key, folder_id)
         elif provider_id == 'gptunnel_chatgpt':
-            api_key = os.environ.get('GPTUNNEL_API_KEY', '')
-            validation_result = validate_gptunnel_key(api_key, selected_model)
+            if not gptunnel_api_key:
+                cur.close()
+                conn.close()
+                return {
+                    'statusCode': 400,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'GPTunnel API key is required'})
+                }
+            validation_result = validate_gptunnel_key(gptunnel_api_key, selected_model)
         elif provider_id == 'yandex_speechkit':
             if not yandex_speechkit_key:
                 cur.close()
@@ -311,14 +308,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if count == 0:
             if provider_id == 'yandex_speechkit':
                 cur.execute("INSERT INTO ai_settings (active_provider, selected_model, yandex_speechkit_key) VALUES (%s, %s, %s)", (provider_id, None, yandex_speechkit_key))
+            elif provider_id == 'gptunnel_chatgpt':
+                cur.execute("INSERT INTO ai_settings (active_provider, selected_model, gptunnel_api_key) VALUES (%s, %s, %s)", (provider_id, selected_model, gptunnel_api_key))
             else:
                 cur.execute("INSERT INTO ai_settings (active_provider, selected_model) VALUES (%s, %s)", (provider_id, selected_model))
         else:
             if provider_id == 'yandex_speechkit':
                 cur.execute("UPDATE ai_settings SET active_provider = %s, selected_model = %s, yandex_speechkit_key = %s, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM ai_settings ORDER BY id LIMIT 1)", (provider_id, None, yandex_speechkit_key))
+            elif provider_id == 'gptunnel_chatgpt':
+                cur.execute("UPDATE ai_settings SET active_provider = %s, selected_model = %s, gptunnel_api_key = %s, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM ai_settings ORDER BY id LIMIT 1)", (provider_id, selected_model, gptunnel_api_key))
             elif not provider_id:
-                # При отключении провайдера - удаляем ключ Yandex SpeechKit
-                cur.execute("UPDATE ai_settings SET active_provider = '', selected_model = NULL, yandex_speechkit_key = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM ai_settings ORDER BY id LIMIT 1)")
+                # При отключении провайдера - удаляем все ключи
+                cur.execute("UPDATE ai_settings SET active_provider = '', selected_model = NULL, yandex_speechkit_key = NULL, gptunnel_api_key = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM ai_settings ORDER BY id LIMIT 1)")
             else:
                 cur.execute("UPDATE ai_settings SET active_provider = %s, selected_model = %s, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM ai_settings ORDER BY id LIMIT 1)", (provider_id, selected_model))
         

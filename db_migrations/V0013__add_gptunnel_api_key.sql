@@ -1,0 +1,1 @@
+ALTER TABLE ai_settings ADD COLUMN gptunnel_api_key VARCHAR(500);
