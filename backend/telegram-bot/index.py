@@ -897,11 +897,10 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             provider_name = receipt_data.get('payment_provider_name', '')
             
             if payment_link_enabled and provider_name:
-                group_text = f"📄 <b>Тип документа</b>\n\n✅ Провайдер: <b>{provider_name}</b>\n\nВыбери параметр:"
+                group_text = f"📄 <b>Тип документа</b>\n\n✅ Провайдер: <b>{provider_name}</b>\n⚠️ Тип операции: <b>Продажа</b> (фиксировано)\n\nВыбери параметр:"
                 group_buttons = [
                     [{"text": "🧾 Чек", "callback_data": f"show_receipt_{preview_id}"}],
                     [{"text": "🔗 Изменить провайдера", "callback_data": f"edit_payment_link_{preview_id}"}],
-                    [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
                     [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
                 ]
             else:
@@ -943,12 +942,22 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             ]
         elif group_type == 'payment':
             # Способ оплаты
-            group_text = "💳 <b>Способ оплаты</b>\n\nВыбери параметр:"
-            group_buttons = [
-                [{"text": "💳 Тип оплаты", "callback_data": f"edit_payment_type_{preview_id}"}],
-                [{"text": "💰 Сумма", "callback_data": f"edit_payment_sum_{preview_id}"}],
-                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
-            ]
+            receipt_data = preview_data.get('receipt_data', {})
+            payment_link_enabled = receipt_data.get('payment_link_enabled', False)
+            
+            if payment_link_enabled:
+                group_text = "💳 <b>Способ оплаты</b>\n\n⚠️ Тип оплаты: <b>Безналичный</b> (фиксировано для ссылки на оплату)\n\nВыбери параметр:"
+                group_buttons = [
+                    [{"text": "💰 Сумма", "callback_data": f"edit_payment_sum_{preview_id}"}],
+                    [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+                ]
+            else:
+                group_text = "💳 <b>Способ оплаты</b>\n\nВыбери параметр:"
+                group_buttons = [
+                    [{"text": "💳 Тип оплаты", "callback_data": f"edit_payment_type_{preview_id}"}],
+                    [{"text": "💰 Сумма", "callback_data": f"edit_payment_sum_{preview_id}"}],
+                    [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+                ]
         else:
             edit_message(bot_token, chat_id, message_id, "❌ Неизвестная группа")
             return create_response({'ok': True})
@@ -1059,7 +1068,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             total = receipt_data.get('total', 0)
             payments = receipt_data.get('payments', [])
             client_data = receipt_data.get('client', {})
-            operation_type = preview_result.get('operation_type', 'sell')
+            operation_type = receipt_data.get('operation_type', 'sell')
             
             operation_names = {
                 'sell': '🛒 Приход (продажа)',
@@ -2240,12 +2249,19 @@ def update_preview_payment_provider(preview_id: str, provider_id: str, provider_
         
         receipt_data = result[0]
         
+        # CRITICAL: Payment link always uses:
+        # - payment type = 1 (безналичный)
+        # - operation_type = 'sell' (продажа)
+        # - provider_id stored separately for link generation
         if 'payments' in receipt_data and len(receipt_data['payments']) > 0:
-            receipt_data['payments'][0]['type'] = int(provider_id)
-            print(f"[DEBUG] Updated payment provider to {provider_id}")
+            receipt_data['payments'][0]['type'] = 1  # Always безналичный for payment link
+            print(f"[DEBUG] Set payment type to 1 (безналичный) for payment link")
         
         receipt_data['payment_link_enabled'] = True
+        receipt_data['payment_provider_id'] = int(provider_id)  # Store provider ID separately
         receipt_data['payment_provider_name'] = provider_name  # Save provider name
+        receipt_data['operation_type'] = 'sell'  # Always Продажа for payment link
+        print(f"[DEBUG] Set operation_type to 'sell' for payment link")
         
         cur.execute(
             "UPDATE telegram_previews SET receipt_data = %s WHERE preview_id = %s",
