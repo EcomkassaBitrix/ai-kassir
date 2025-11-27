@@ -973,15 +973,14 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
             return create_response({'ok': True})
         
-        user_message = preview_data['user_message']
         user_id = preview_data['user_id']
         
-        # Regenerate preview
-        preview_result = process_receipt_ai(user_message, user_id, preview_only=True)
+        # CRITICAL: Use stored receipt_data instead of regenerating
+        # This preserves payment_link and other edits
+        receipt_data = preview_data.get('receipt_data')
         
-        if preview_result.get('preview'):
-            # Rebuild preview text (same code as before)
-            receipt_data = preview_result.get('receipt', {})
+        if receipt_data:
+            # Use stored edited data
             items = receipt_data.get('items', [])
             total = receipt_data.get('total', 0)
             payments = receipt_data.get('payments', [])
@@ -1028,7 +1027,14 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             
             response_text += f"\n<b>💰 Итого:</b> {total}₽\n\n"
             
-            if payments and len(payments) > 1:
+            # Check if payment link is enabled
+            payment_link_enabled = receipt_data.get('payment_link_enabled', False)
+            
+            if payment_link_enabled:
+                # Show payment link info
+                provider_id = payments[0].get('type') if payments else None
+                response_text += f"<b>🔗 Способ оплаты:</b> Ссылка на оплату (ID провайдера: {provider_id})\n"
+            elif payments and len(payments) > 1:
                 response_text += "<b>Способы оплаты:</b>\n"
                 payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
                 for payment in payments:
@@ -1236,15 +1242,21 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
             return create_response({'ok': True})
         
-        update_preview_payment_provider(preview_id, provider_id)
+        # Update payment provider in preview data
+        success = update_preview_payment_provider(preview_id, provider_id)
+        
+        if not success:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка при сохранении провайдера")
+            return create_response({'ok': True})
         
         edit_message(bot_token, chat_id, message_id, f"✅ Платежный провайдер установлен (ID: {provider_id})\n\nЧек будет создан со ссылкой на оплату.\n\nВозвращаю к чеку...")
         
         import time
         time.sleep(1)
         
-        callback_query['data'] = f"back_{preview_id}"
-        return handle_callback_query(callback_query, bot_token)
+        # Show updated preview with payment link
+        show_updated_preview(bot_token, chat_id, preview_id, preview_data['user_id'])
+        return create_response({'ok': True})
     
     return create_response({'ok': True})
 
@@ -1825,7 +1837,14 @@ def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id:
     
     response_text += f"\n<b>💰 Итого:</b> {total}₽\n\n"
     
-    if payments and len(payments) > 1:
+    # Check if payment link is enabled
+    payment_link_enabled = receipt_data.get('payment_link_enabled', False)
+    
+    if payment_link_enabled:
+        # Show payment link info
+        provider_id = payments[0].get('type') if payments else None
+        response_text += f"<b>🔗 Способ оплаты:</b> Ссылка на оплату (ID провайдера: {provider_id})\n"
+    elif payments and len(payments) > 1:
         response_text += "<b>Способы оплаты:</b>\n"
         payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
         for payment in payments:
