@@ -163,9 +163,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     send_telegram_message(bot_token, chat_id, f"❌ Чек с UUID {uuid_to_find} не найден")
                     return create_response({'ok': True})
                 
+                print(f"[DEBUG] Receipt found! Data: {receipt_data}")
+                
                 # Generate new preview_id
                 import uuid
                 preview_id = str(uuid.uuid4())
+                
+                print(f"[DEBUG] Generated preview_id: {preview_id}")
                 
                 # Store preview data
                 preview_data = {
@@ -174,8 +178,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'user_message': f"Повтор чека UUID {uuid_to_find}"
                 }
                 
+                print(f"[DEBUG] Storing preview data...")
                 store_preview_data(preview_id, preview_data, chat_id)
+                
+                print(f"[DEBUG] Showing receipt preview...")
                 show_receipt_preview(bot_token, chat_id, preview_data, preview_id)
+                
+                print(f"[DEBUG] Repeat by UUID completed successfully")
                 return create_response({'ok': True})
         
         if text.startswith('/repeat') or text.lower().strip() in ['повтори', 'повтори последний', 'повтори запрос', 'повторить']:
