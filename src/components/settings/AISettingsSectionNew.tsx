@@ -145,6 +145,12 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
     }
   };
 
+  const handleChangeModel = async () => {
+    setTempProvider('gptunnel_chatgpt');
+    setModelSelectMode(true);
+    await loadSettings(); // Загрузить модели
+  };
+
   const handleSpeechKitActivate = async () => {
     if (!yandexSpeechKitKey.trim()) {
       toast.error('Введите API ключ Yandex SpeechKit');
@@ -251,14 +257,26 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
                 )}
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleProviderChange('')}
-              className="bg-transparent border-red-800 text-red-400 hover:bg-red-950/30 hover:text-red-300"
-            >
-              Отключить
-            </Button>
+            <div className="flex gap-2">
+              {activeTextProvider.id === 'gptunnel_chatgpt' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleChangeModel}
+                  className="bg-transparent border-blue-700 text-blue-400 hover:bg-blue-950/30"
+                >
+                  Сменить модель
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleProviderChange('')}
+                className="bg-transparent border-red-800 text-red-400 hover:bg-red-950/30 hover:text-red-300"
+              >
+                Отключить
+              </Button>
+            </div>
           </div>
         )}
 
