@@ -10,7 +10,8 @@ interface AISettingsSectionNewProps {
 }
 
 export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) => {
-  const [activeProvider, setActiveProvider] = useState<string>('');
+  const [textProvider, setTextProvider] = useState<string>('');
+  const [voiceProvider, setVoiceProvider] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<AIModel[]>([]);
   const [providers, setProviders] = useState<AIProvider[]>([]);
@@ -39,7 +40,8 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
       }
 
       const data = await response.json();
-      setActiveProvider(data.active_provider || '');
+      setTextProvider(data.text_provider || '');
+      setVoiceProvider(data.voice_provider || '');
       setSelectedModel(data.selected_model || null);
       setAvailableModels(data.available_models || []);
       setProviders(data.available_providers || []);
@@ -95,16 +97,39 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
     }
   };
 
-  const handleProviderChange = async (providerId: string) => {
+  const handleProviderChange = async (providerId: string, providerType: 'text' | 'voice' = 'text') => {
     if (!providerId) {
-      const isValid = await validateKey('');
-      if (isValid) {
-        setActiveProvider('');
-        setSelectedModel(null);
-        setYandexSpeechKitKey('');
-        setGptunnelApiKey('');
-        toast.success('Провайдер отключен');
-        await loadSettings();
+      const body: any = { provider_id: '', disable_type: providerType };
+      
+      const validatingToast = toast.loading('Отключаю провайдер...');
+      
+      try {
+        const response = await fetch('https://functions.poehali.dev/0924c3f7-bb48-46bb-9dbb-fddba37c9280', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Admin-Token': adminToken
+          },
+          body: JSON.stringify(body)
+        });
+        
+        toast.dismiss(validatingToast);
+        
+        if (response.ok) {
+          if (providerType === 'text') {
+            setTextProvider('');
+            setSelectedModel(null);
+            setGptunnelApiKey('');
+          } else {
+            setVoiceProvider('');
+            setYandexSpeechKitKey('');
+          }
+          toast.success('Провайдер отключен');
+          await loadSettings();
+        }
+      } catch (error) {
+        toast.dismiss(validatingToast);
+        toast.error('Ошибка отключения');
       }
       return;
     }
@@ -117,7 +142,11 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
       const isValid = await validateKey(providerId);
       
       if (isValid) {
-        setActiveProvider(providerId);
+        if (providerType === 'text') {
+          setTextProvider(providerId);
+        } else {
+          setVoiceProvider(providerId);
+        }
         setSelectedModel(null);
         toast.success('Провайдер активирован ✓');
         await loadSettings();
@@ -150,7 +179,7 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
         return;
       }
 
-      setActiveProvider(tempProvider);
+      setTextProvider(tempProvider);
       setSelectedModel(modelId);
       setModelSelectMode(false);
       toast.success('Провайдер с моделью активирован ✓');
@@ -220,7 +249,7 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
     const isValid = await validateKey('yandex_speechkit', undefined, yandexSpeechKitKey);
     
     if (isValid) {
-      setActiveProvider('yandex_speechkit');
+      setVoiceProvider('yandex_speechkit');
       setShowKeyInput(false);
       toast.success('Yandex SpeechKit активирован ✓');
       await loadSettings();
@@ -240,8 +269,8 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
   const textProviders = providers.filter(p => p.id !== 'yandex_speechkit' && p.id !== 'gigachat');
   const speechProviders = providers.filter(p => p.id === 'yandex_speechkit');
   
-  const activeTextProvider = textProviders.find(p => p.id === activeProvider);
-  const activeSpeechProvider = speechProviders.find(p => p.id === activeProvider);
+  const activeTextProvider = textProviders.find(p => p.id === textProvider);
+  const activeSpeechProvider = speechProviders.find(p => p.id === voiceProvider);
 
   return (
     <Card className="bg-[#1a1a1a] border-gray-800">
@@ -255,7 +284,7 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
         
         {/* Раздел 1: Распознавание текста */}
         <TextRecognitionSection
-          activeProvider={activeProvider}
+          activeProvider={textProvider}
           selectedModel={selectedModel}
           modelSelectMode={modelSelectMode}
           showGptunnelKeyInput={showGptunnelKeyInput}
@@ -264,7 +293,7 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
           textProviders={textProviders}
           activeTextProvider={activeTextProvider}
           setGptunnelApiKey={setGptunnelApiKey}
-          handleProviderChange={handleProviderChange}
+          handleProviderChange={(id) => handleProviderChange(id, 'text')}
           handleGptunnelKeySubmit={handleGptunnelKeySubmit}
           handleModelSelect={handleModelSelect}
           handleChangeModel={handleChangeModel}
@@ -274,14 +303,14 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
 
         {/* Раздел 2: Распознавание голоса */}
         <VoiceRecognitionSection
-          activeProvider={activeProvider}
+          activeProvider={voiceProvider}
           showKeyInput={showKeyInput}
           yandexSpeechKitKey={yandexSpeechKitKey}
           speechProviders={speechProviders}
           activeSpeechProvider={activeSpeechProvider}
           modelSelectMode={modelSelectMode}
           setYandexSpeechKitKey={setYandexSpeechKitKey}
-          handleProviderChange={handleProviderChange}
+          handleProviderChange={(id) => handleProviderChange(id, 'voice')}
           handleSpeechKitActivate={handleSpeechKitActivate}
           setShowKeyInput={setShowKeyInput}
         />
