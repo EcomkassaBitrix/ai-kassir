@@ -63,21 +63,34 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # CRITICAL: Extract sender_id early for group support
         sender_id = message.get('from', {}).get('id', chat_id)
         
-        # CRITICAL: In groups, check if bot is mentioned
+        # CRITICAL: In groups, check if user is editing BEFORE checking bot mention
+        # This allows users to send edit values without tagging bot
         if chat_type in ['group', 'supergroup']:
-            text_raw = message.get('text', '')
-            # Check if message mentions bot (via @username or reply)
-            bot_mentioned = '@ecomkassa_ai_bot' in text_raw.lower() or message.get('reply_to_message', {}).get('from', {}).get('is_bot', False)
+            search_chat_id = sender_id
+            editing_preview_id = find_editing_preview_for_chat(search_chat_id)
+            print(f"[DEBUG] Group message: checking editing state for sender_id={sender_id}, found: {editing_preview_id}")
             
-            if not bot_mentioned:
-                # Ignore messages in groups that don't mention bot
-                return create_response({'ok': True})
-            
-            # Remove bot mention from text for processing
-            text = text_raw.replace('@ecomkassa_ai_bot', '').replace('@Ecomkassa_ai_bot', '').strip()
-            message['text'] = text  # Update message text
+            # If user is editing, process immediately without requiring bot mention
+            if editing_preview_id:
+                print(f"[DEBUG] User is editing - processing message without bot mention requirement")
+                text = message.get('text', '')
+                # Continue to editing logic below (don't return here)
+            else:
+                # No editing state - check if bot is mentioned
+                text_raw = message.get('text', '')
+                bot_mentioned = '@ecomkassa_ai_bot' in text_raw.lower() or message.get('reply_to_message', {}).get('from', {}).get('is_bot', False)
+                
+                if not bot_mentioned:
+                    # Ignore messages in groups that don't mention bot
+                    return create_response({'ok': True})
+                
+                # Remove bot mention from text for processing
+                text = text_raw.replace('@ecomkassa_ai_bot', '').replace('@Ecomkassa_ai_bot', '').strip()
+                message['text'] = text  # Update message text
+        else:
+            text = message.get('text', '')
         
-        # Handle voice messages
+        # Handle voice messages (if text wasn't already set in group check above)
         if 'voice' in message:
             # Send processing notification
             send_telegram_message(bot_token, chat_id, "🎤 Распознаю голос...")
@@ -91,7 +104,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             # Show transcribed text to user
             send_telegram_message(bot_token, chat_id, f"✅ Распознано: \"{text}\"\n\nОбрабатываю...")
-        else:
+        elif 'text' not in locals():
+            # If text wasn't set above (private chat), get it from message
             text = message.get('text', '')
         
         if text.startswith('/start'):
@@ -237,11 +251,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if text.startswith('/') or text.lower() in ['отмена', 'отменить', 'cancel']:
             clear_context_for_chat(chat_id)
         
-        # Check if user is editing a field
+        # Check if user is editing a field (skip if already checked in group logic above)
         # CRITICAL: In groups, use sender_id to find editing preview (not group chat_id)
-        search_chat_id = sender_id if chat_type in ['group', 'supergroup'] else chat_id
-        editing_preview_id = find_editing_preview_for_chat(search_chat_id)
-        print(f"[DEBUG] find_editing_preview_for_chat(search_chat_id={search_chat_id}) returned: {editing_preview_id}")
+        if chat_type not in ['group', 'supergroup']:
+            # Private chat - check editing state
+            search_chat_id = chat_id
+            editing_preview_id = find_editing_preview_for_chat(search_chat_id)
+            print(f"[DEBUG] Private chat: find_editing_preview_for_chat(search_chat_id={search_chat_id}) returned: {editing_preview_id}")
+        else:
+            # Group chat - use sender_id (already checked above if editing)
+            search_chat_id = sender_id
+            editing_preview_id = find_editing_preview_for_chat(search_chat_id)
+            print(f"[DEBUG] Group chat: find_editing_preview_for_chat(search_chat_id={search_chat_id}) returned: {editing_preview_id}")
         if editing_preview_id:
             editing_field = get_editing_state(editing_preview_id)
             print(f"[DEBUG] User is editing field: {editing_field}")
