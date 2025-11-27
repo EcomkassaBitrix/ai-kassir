@@ -376,6 +376,28 @@ def send_telegram_message_with_buttons(bot_token: str, chat_id: int, text: str, 
     urllib.request.urlopen(req, timeout=10)
 
 
+def send_photo(bot_token: str, chat_id: int, photo_url: str, caption: str = '') -> None:
+    '''Send photo by URL to Telegram chat'''
+    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+    data = {
+        'chat_id': chat_id,
+        'photo': photo_url,
+        'caption': caption,
+        'parse_mode': 'HTML'
+    }
+    
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(data).encode('utf-8'),
+        headers={'Content-Type': 'application/json'}
+    )
+    
+    try:
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        print(f"[ERROR] Failed to send photo: {e}")
+
+
 def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = False) -> Dict[str, Any]:
     process_receipt_url = 'https://functions.poehali.dev/734da785-2867-4c5d-b20c-90fc6d86b11c'
     
@@ -715,10 +737,11 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             if payment_link:
                 response_text += f"\n\n🔗 <b>Ссылка на оплату:</b>\n{payment_link}"
             
-            if qr_code:
-                response_text += f"\n\n📱 <b>QR-код:</b>\n{qr_code}"
-            
             edit_message(bot_token, chat_id, message_id, response_text)
+            
+            # CRITICAL: Send QR code as photo if available
+            if qr_code:
+                send_photo(bot_token, chat_id, qr_code, "📱 Отсканируй QR-код для оплаты")
         else:
             error_msg = receipt_result.get('message') or receipt_result.get('error', 'Не удалось создать чек')
             edit_message(bot_token, chat_id, message_id, f"❌ Ошибка: {error_msg}")
