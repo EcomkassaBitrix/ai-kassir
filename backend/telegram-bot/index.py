@@ -209,6 +209,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         user_id = get_user_id_for_telegram(chat_id)
         print(f"[DEBUG] chat_id={chat_id}, resolved user_id='{user_id}'")
         
+        # CRITICAL: Clear context when user starts editing or sends /commands
+        # This prevents stale context from interfering with new requests
+        if text.startswith('/') or text.lower() in ['отмена', 'отменить', 'cancel']:
+            clear_context_for_chat(chat_id)
+        
         # Check if user is editing a field
         editing_preview_id = find_editing_preview_for_chat(chat_id)
         print(f"[DEBUG] find_editing_preview_for_chat returned: {editing_preview_id}")
@@ -240,8 +245,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         send_telegram_message(bot_token, chat_id, "❌ Ошибка при сохранении. Попробуй снова.")
                         return create_response({'ok': True})
         
-        # Get preview of the receipt
-        preview_result = process_receipt_ai(text, user_id, preview_only=True)
+        # Get preview of the receipt (pass chat_id for context management)
+        preview_result = process_receipt_ai(text, user_id, preview_only=True, chat_id=chat_id)
         print(f"[DEBUG] preview_result: {preview_result.get('success')}, preview: {preview_result.get('preview')}")
         
         # Clean up any old editing states for this chat when creating new preview
@@ -476,8 +481,15 @@ def send_photo(bot_token: str, chat_id: int, photo_url: str, caption: str = '') 
         print(f"[ERROR] Failed to send photo: {e}")
 
 
-def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = False) -> Dict[str, Any]:
+def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = False, chat_id: int = None) -> Dict[str, Any]:
     process_receipt_url = 'https://functions.poehali.dev/734da785-2867-4c5d-b20c-90fc6d86b11c'
+    
+    # CRITICAL: Get context from previous incomplete request (if exists)
+    context_message = ''
+    if chat_id:
+        context_message = get_context_for_chat(chat_id)
+        if context_message:
+            print(f"[DEBUG] Found context from previous request: '{context_message}'")
     
     # CRITICAL: Auto-detect document type from keywords
     # Keywords for payment link: ссылка, платеж, QR, эквайринг, СБП
@@ -555,7 +567,9 @@ def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = Fal
         'document_type': document_type,  # CRITICAL: Pass document type to backend
         'auto_selected_provider': auto_selected_provider,  # CRITICAL: Auto-selected payment provider
         'detected_provider_keyword': detected_provider_name,  # CRITICAL: Keyword that was detected (even if not available)
-        'settings': {}
+        'settings': {
+            'context_message': context_message  # CRITICAL: Pass context from previous incomplete request
+        }
     }
     
     try:
@@ -570,6 +584,22 @@ def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = Fal
         
         with urllib.request.urlopen(req, timeout=60) as response:
             result = json.loads(response.read().decode('utf-8'))
+            
+            # CRITICAL: Save context for next request if AI asks for more info
+            # If result contains error asking for more data, save current message as context
+            if chat_id and result.get('error') and not result.get('success'):
+                error_msg = result.get('error', '').lower()
+                # Check if AI is asking for product name, price, or other missing data
+                if any(keyword in error_msg for keyword in ['что продаёшь', 'укажи', 'не хватает', 'название']):
+                    print(f"[DEBUG] AI asking for more info - saving context: '{user_message}'")
+                    save_context_for_chat(chat_id, user_message)
+                else:
+                    # Clear context if error is not about missing data
+                    clear_context_for_chat(chat_id)
+            elif chat_id and result.get('success'):
+                # Clear context on successful receipt creation
+                clear_context_for_chat(chat_id)
+            
             return result
             
     except urllib.error.HTTPError as e:
@@ -3201,4 +3231,98 @@ def update_preview_field_value(preview_id: str, field: str, value: str) -> bool:
     except Exception as e:
         print(f"[ERROR] Failed to update preview field {field}: {str(e)}")
         return False
-        return {'error': str(e)}
+
+
+def save_context_for_chat(chat_id: int, message: str) -> None:
+    '''Save context message for multi-turn conversation'''
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        print("[ERROR] DATABASE_URL not set, cannot save context")
+        return
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        # Create table if not exists
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS telegram_context ("
+            "chat_id BIGINT PRIMARY KEY, "
+            "context_message TEXT, "
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        
+        # Insert or update context
+        cur.execute(
+            "INSERT INTO telegram_context (chat_id, context_message, created_at) "
+            "VALUES (%s, %s, NOW()) "
+            "ON CONFLICT (chat_id) DO UPDATE SET "
+            "context_message = EXCLUDED.context_message, "
+            "created_at = NOW()",
+            (chat_id, message)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[DEBUG] Context saved for chat_id {chat_id}: '{message}'")
+    except Exception as e:
+        print(f"[ERROR] Failed to save context: {e}")
+
+
+def get_context_for_chat(chat_id: int) -> str:
+    '''Get stored context message for chat'''
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return ''
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        # Create table if not exists
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS telegram_context ("
+            "chat_id BIGINT PRIMARY KEY, "
+            "context_message TEXT, "
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        
+        cur.execute(
+            "SELECT context_message FROM telegram_context WHERE chat_id = %s",
+            (chat_id,)
+        )
+        
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if result and result[0]:
+            return result[0]
+        
+        return ''
+    except Exception as e:
+        print(f"[ERROR] Failed to get context: {e}")
+        return ''
+
+
+def clear_context_for_chat(chat_id: int) -> None:
+    '''Clear stored context for chat'''
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute("DELETE FROM telegram_context WHERE chat_id = %s", (chat_id,))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[DEBUG] Context cleared for chat_id {chat_id}")
+    except Exception as e:
+        print(f"[ERROR] Failed to clear context: {e}")
