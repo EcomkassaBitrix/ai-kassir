@@ -2082,10 +2082,16 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
                 if receipt_data.get('items') and len(receipt_data['items']) > 0:
                     old_price = receipt_data['items'][0]['price']
                     receipt_data['items'][0]['price'] = price
-                    receipt_data['total'] = price * receipt_data['items'][0].get('quantity', 1)
+                    
+                    # CRITICAL: Recalculate total from ALL items
+                    total = sum(item.get('price', 0) * item.get('quantity', 1) for item in receipt_data['items'])
+                    receipt_data['total'] = round(total, 2)
+                    
+                    # Update payment sum to match new total
                     if receipt_data.get('payments'):
                         receipt_data['payments'][0]['sum'] = receipt_data['total']
-                    print(f"[DEBUG] Updated price: {old_price} -> {price}, total: {receipt_data['total']}")
+                    
+                    print(f"[DEBUG] Updated price: {old_price} -> {price}, new total: {receipt_data['total']}")
                 else:
                     print(f"[ERROR] No items found in receipt_data")
                     return False
@@ -2098,10 +2104,16 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
                 if receipt_data.get('items') and len(receipt_data['items']) > 0:
                     old_qty = receipt_data['items'][0]['quantity']
                     receipt_data['items'][0]['quantity'] = qty
-                    receipt_data['total'] = receipt_data['items'][0]['price'] * qty
+                    
+                    # CRITICAL: Recalculate total from ALL items
+                    total = sum(item.get('price', 0) * item.get('quantity', 1) for item in receipt_data['items'])
+                    receipt_data['total'] = round(total, 2)
+                    
+                    # Update payment sum to match new total
                     if receipt_data.get('payments'):
                         receipt_data['payments'][0]['sum'] = receipt_data['total']
-                    print(f"[DEBUG] Updated quantity: {old_qty} -> {qty}, total: {receipt_data['total']}")
+                    
+                    print(f"[DEBUG] Updated quantity: {old_qty} -> {qty}, new total: {receipt_data['total']}")
                 else:
                     print(f"[ERROR] No items found in receipt_data")
                     return False
@@ -2123,8 +2135,9 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
                 payment_sum = float(new_value.replace('₽', '').replace('руб', '').strip())
                 if receipt_data.get('payments') and len(receipt_data['payments']) > 0:
                     receipt_data['payments'][0]['sum'] = payment_sum
-                    receipt_data['total'] = payment_sum
-                    print(f"[DEBUG] Updated payment sum to: {payment_sum}")
+                    # CRITICAL: DO NOT update total - it should always equal sum of items
+                    # Balance validation will show the difference
+                    print(f"[DEBUG] Updated payment sum to: {payment_sum} (total stays {receipt_data.get('total', 0)})")
                 else:
                     print(f"[ERROR] No payments found in receipt_data")
                     return False
