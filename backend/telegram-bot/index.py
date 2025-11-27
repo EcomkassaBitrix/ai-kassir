@@ -2144,6 +2144,14 @@ def save_editing_state(preview_id: str, field: str, sender_id: int = None) -> No
             "ALTER TABLE telegram_edit_states ADD COLUMN IF NOT EXISTS sender_id BIGINT"
         )
         
+        # CRITICAL: Clean up old editing states for this sender_id (to avoid conflicts)
+        if sender_id:
+            cur.execute(
+                "DELETE FROM telegram_edit_states WHERE sender_id = %s",
+                (sender_id,)
+            )
+            print(f"[DEBUG] Cleaned up old editing states for sender_id={sender_id}")
+        
         print(f"[DEBUG] Inserting into telegram_edit_states: preview_id='{preview_id}', field='{field}', sender_id={sender_id}")
         
         cur.execute(
