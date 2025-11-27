@@ -57,6 +57,35 @@ def validate_yandexgpt_key(api_key: str, folder_id: str) -> Dict[str, Any]:
     except Exception as e:
         return {'valid': False, 'message': f'Validation error: {str(e)}'}
 
+def validate_yandex_speechkit_key(api_key: str) -> Dict[str, Any]:
+    '''Validate Yandex SpeechKit API key by testing STT endpoint'''
+    try:
+        # Test with minimal audio data (1 second of silence in OGG)
+        test_audio = b'\x4f\x67\x67\x53\x00\x02'
+        
+        response = requests.post(
+            'https://stt.api.cloud.yandex.net/speech/v1/stt:recognize',
+            headers={
+                'Authorization': f'Api-Key {api_key}'
+            },
+            params={
+                'lang': 'ru-RU',
+                'format': 'oggopus'
+            },
+            data=test_audio,
+            timeout=10
+        )
+        
+        # Even if transcription fails (empty audio), 200 status means key is valid
+        if response.status_code == 200:
+            return {'valid': True, 'message': 'Yandex SpeechKit key is valid'}
+        elif response.status_code == 401:
+            return {'valid': False, 'message': 'Invalid API key'}
+        else:
+            return {'valid': False, 'message': f'Validation error: {response.status_code}'}
+    except Exception as e:
+        return {'valid': False, 'message': f'Validation error: {str(e)}'}
+
 def get_gptunnel_models(api_key: str) -> Dict[str, Any]:
     '''Fetch available models from GPTunnel API'''
     try:
@@ -166,6 +195,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'description': 'Доступ к GPT, DeepSeek, Gemini и другим моделям',
             'secret_name': 'GPTUNNEL_API_KEY',
             'has_secret': bool(os.environ.get('GPTUNNEL_API_KEY'))
+        },
+        {
+            'id': 'yandex_speechkit',
+            'name': 'Yandex SpeechKit',
+            'description': 'Распознавание голосовых сообщений (для Telegram бота)',
+            'secret_name': 'YANDEX_SPEECHKIT_API_KEY',
+            'has_secret': bool(os.environ.get('YANDEX_SPEECHKIT_API_KEY'))
         }
     ]
     
@@ -237,6 +273,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         elif provider_id == 'gptunnel_chatgpt':
             api_key = os.environ.get('GPTUNNEL_API_KEY', '')
             validation_result = validate_gptunnel_key(api_key, selected_model)
+        elif provider_id == 'yandex_speechkit':
+            api_key = os.environ.get('YANDEX_SPEECHKIT_API_KEY', '')
+            validation_result = validate_yandex_speechkit_key(api_key)
         else:
             validation_result = {'valid': False, 'message': 'Unknown provider'}
         

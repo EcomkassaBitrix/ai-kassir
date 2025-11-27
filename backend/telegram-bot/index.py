@@ -1452,16 +1452,39 @@ def get_bot_token() -> str:
 
 def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
     '''
-    Download voice message and transcribe using GPT-4o Audio
+    Download voice message and transcribe using Yandex SpeechKit
     Returns: {'text': transcribed_text} or {'error': message}
     '''
-    import base64
-    
     voice = message.get('voice', {})
     file_id = voice.get('file_id')
     
     if not file_id:
         return {'error': 'Voice file_id not found'}
+    
+    # Check if Yandex SpeechKit is enabled in admin settings
+    dsn = os.environ.get('DATABASE_URL')
+    speechkit_enabled = False
+    
+    if dsn:
+        try:
+            conn = psycopg2.connect(dsn)
+            cur = conn.cursor()
+            cur.execute("SELECT active_provider FROM ai_settings ORDER BY id DESC LIMIT 1")
+            row = cur.fetchone()
+            if row and row[0] == 'yandex_speechkit':
+                speechkit_enabled = True
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"[ERROR] Failed to check SpeechKit status: {e}")
+    
+    if not speechkit_enabled:
+        return {'error': 'Распознавание речи не настроено. Включите Yandex SpeechKit в админке.'}
+    
+    # Get API key
+    api_key = os.environ.get('YANDEX_SPEECHKIT_API_KEY')
+    if not api_key:
+        return {'error': 'SpeechKit API key not configured'}
     
     # Get file path from Telegram
     try:
@@ -1481,57 +1504,21 @@ def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
         file_resp = urllib.request.urlopen(file_req, timeout=30)
         voice_data = file_resp.read()
         
-        # Encode audio to base64
-        audio_base64 = base64.b64encode(voice_data).decode('utf-8')
-        
-        # Use GPTunnel Whisper API (supports Russian transcription)
-        api_key = os.environ.get('GPTUNNEL_API_KEY')
-        if not api_key:
-            return {'error': 'API key not configured'}
-        
-        # Prepare multipart/form-data for Whisper API
-        boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW'
-        body_parts = []
-        
-        # Add file
-        body_parts.append(f'--{boundary}'.encode())
-        body_parts.append(b'Content-Disposition: form-data; name="file"; filename="voice.ogg"')
-        body_parts.append(b'Content-Type: audio/ogg')
-        body_parts.append(b'')
-        body_parts.append(voice_data)
-        
-        # Add model
-        body_parts.append(f'--{boundary}'.encode())
-        body_parts.append(b'Content-Disposition: form-data; name="model"')
-        body_parts.append(b'')
-        body_parts.append(b'whisper-1')
-        
-        # Add language hint for better accuracy
-        body_parts.append(f'--{boundary}'.encode())
-        body_parts.append(b'Content-Disposition: form-data; name="language"')
-        body_parts.append(b'')
-        body_parts.append(b'ru')
-        
-        body_parts.append(f'--{boundary}--'.encode())
-        
-        body = b'\r\n'.join(body_parts)
-        
-        # Call GPTunnel Whisper API
-        whisper_url = 'https://gptunnel.ru/v1/audio/transcriptions'
-        whisper_req = urllib.request.Request(
-            whisper_url,
-            data=body,
+        # Call Yandex SpeechKit API
+        speechkit_url = 'https://stt.api.cloud.yandex.net/speech/v1/stt:recognize'
+        speechkit_req = urllib.request.Request(
+            f"{speechkit_url}?lang=ru-RU&format=oggopus",
+            data=voice_data,
             headers={
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': f'multipart/form-data; boundary={boundary}'
+                'Authorization': f'Api-Key {api_key}'
             },
             method='POST'
         )
         
-        whisper_resp = urllib.request.urlopen(whisper_req, timeout=60)
-        whisper_data = json.loads(whisper_resp.read().decode('utf-8'))
+        speechkit_resp = urllib.request.urlopen(speechkit_req, timeout=60)
+        speechkit_data = json.loads(speechkit_resp.read().decode('utf-8'))
         
-        transcribed_text = whisper_data.get('text', '').strip()
+        transcribed_text = speechkit_data.get('result', '').strip()
         
         if not transcribed_text:
             return {'error': 'Could not transcribe voice message'}
