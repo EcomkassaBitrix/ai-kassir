@@ -118,7 +118,17 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
       setModelSelectMode(true);
       await loadSettings();
     } else if (providerId === 'yandex_speechkit') {
-      setShowKeyInput(true);
+      // Если ключ уже сохранён, активируем сразу, иначе показываем форму
+      if (yandexSpeechKitKey) {
+        const isValid = await validateKey('yandex_speechkit', undefined, yandexSpeechKitKey);
+        if (isValid) {
+          setActiveProvider('yandex_speechkit');
+          toast.success('Yandex SpeechKit активирован ✓');
+          await loadSettings();
+        }
+      } else {
+        setShowKeyInput(true);
+      }
     } else {
       const isValid = await validateKey(providerId);
       
