@@ -1,0 +1,14 @@
+{
+  "tests": [
+    {
+      "name": "Test get models",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
