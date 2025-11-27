@@ -892,13 +892,26 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         
         if group_type == 'doc':
             # Тип документа
-            group_text = "📄 <b>Тип документа</b>\n\nВыбери параметр:"
-            group_buttons = [
-                [{"text": "🧾 Чек", "callback_data": f"show_receipt_{preview_id}"}],
-                [{"text": "🔗 Ссылка на оплату", "callback_data": f"edit_payment_link_{preview_id}"}],
-                [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
-                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
-            ]
+            receipt_data = preview_data.get('receipt_data', {})
+            payment_link_enabled = receipt_data.get('payment_link_enabled', False)
+            provider_name = receipt_data.get('payment_provider_name', '')
+            
+            if payment_link_enabled and provider_name:
+                group_text = f"📄 <b>Тип документа</b>\n\n✅ Провайдер: <b>{provider_name}</b>\n\nВыбери параметр:"
+                group_buttons = [
+                    [{"text": "🧾 Чек", "callback_data": f"show_receipt_{preview_id}"}],
+                    [{"text": "🔗 Изменить провайдера", "callback_data": f"edit_payment_link_{preview_id}"}],
+                    [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
+                    [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+                ]
+            else:
+                group_text = "📄 <b>Тип документа</b>\n\nВыбери параметр:"
+                group_buttons = [
+                    [{"text": "🧾 Чек", "callback_data": f"show_receipt_{preview_id}"}],
+                    [{"text": "🔗 Ссылка на оплату", "callback_data": f"edit_payment_link_{preview_id}"}],
+                    [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
+                    [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+                ]
         elif group_type == 'company':
             # Данные компании
             group_text = "🏢 <b>Данные компании</b>\n\nВыбери параметр:"
@@ -1032,8 +1045,8 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             
             if payment_link_enabled:
                 # Show payment link info
-                provider_id = payments[0].get('type') if payments else None
-                response_text += f"<b>🔗 Способ оплаты:</b> Ссылка на оплату (ID провайдера: {provider_id})\n"
+                provider_name = receipt_data.get('payment_provider_name', 'Не указан')
+                response_text += f"<b>🔗 Способ оплаты:</b> Ссылка на оплату ({provider_name})\n"
             elif payments and len(payments) > 1:
                 response_text += "<b>Способы оплаты:</b>\n"
                 payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
@@ -1242,20 +1255,41 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
             return create_response({'ok': True})
         
-        # Update payment provider in preview data
-        success = update_preview_payment_provider(preview_id, provider_id)
+        user_id = preview_data.get('user_id', '')
+        
+        # Load payment providers to get provider name
+        payment_providers = get_payment_providers(user_id)
+        provider_name = f"Провайдер {provider_id}"
+        
+        if payment_providers:
+            for provider in payment_providers:
+                if str(provider.get('id')) == str(provider_id):
+                    provider_desc = provider.get('description', '')
+                    # Clean provider description
+                    provider_desc = provider_desc.replace('Платёж через счёт ', '')
+                    provider_desc = provider_desc.replace('Платёж через эквайринг ', '')
+                    provider_desc = provider_desc.replace('Платёж через ', '')
+                    provider_desc = provider_desc.replace('"', '')
+                    provider_name = provider_desc
+                    break
+        
+        # Update payment provider in preview data with name
+        success = update_preview_payment_provider(preview_id, provider_id, provider_name)
         
         if not success:
             edit_message(bot_token, chat_id, message_id, "❌ Ошибка при сохранении провайдера")
             return create_response({'ok': True})
         
-        edit_message(bot_token, chat_id, message_id, f"✅ Платежный провайдер установлен (ID: {provider_id})\n\nЧек будет создан со ссылкой на оплату.\n\nВозвращаю к чеку...")
+        # Return to "Тип документа" menu
+        group_text = f"📄 <b>Тип документа</b>\n\n✅ Выбран провайдер: <b>{provider_name}</b>\n\nВыбери параметр:"
+        group_buttons = [
+            [{"text": "🧾 Чек", "callback_data": f"show_receipt_{preview_id}"}],
+            [{"text": "🔗 Изменить провайдера", "callback_data": f"edit_payment_link_{preview_id}"}],
+            [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
+            [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+        ]
         
-        import time
-        time.sleep(1)
-        
-        # Show updated preview with payment link
-        show_updated_preview(bot_token, chat_id, preview_id, preview_data['user_id'])
+        edit_message_with_buttons(bot_token, chat_id, message_id, group_text, group_buttons)
         return create_response({'ok': True})
     
     return create_response({'ok': True})
@@ -1842,8 +1876,8 @@ def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id:
     
     if payment_link_enabled:
         # Show payment link info
-        provider_id = payments[0].get('type') if payments else None
-        response_text += f"<b>🔗 Способ оплаты:</b> Ссылка на оплату (ID провайдера: {provider_id})\n"
+        provider_name = receipt_data.get('payment_provider_name', 'Не указан')
+        response_text += f"<b>🔗 Способ оплаты:</b> Ссылка на оплату ({provider_name})\n"
     elif payments and len(payments) > 1:
         response_text += "<b>Способы оплаты:</b>\n"
         payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
@@ -2168,7 +2202,7 @@ def update_preview_payment(preview_id: str, payment_type: str) -> bool:
         return False
 
 
-def update_preview_payment_provider(preview_id: str, provider_id: str) -> bool:
+def update_preview_payment_provider(preview_id: str, provider_id: str, provider_name: str = '') -> bool:
     """Update payment provider in telegram_previews receipt_data"""
     dsn = os.environ.get('DATABASE_URL')
     if not dsn:
@@ -2197,6 +2231,7 @@ def update_preview_payment_provider(preview_id: str, provider_id: str) -> bool:
             print(f"[DEBUG] Updated payment provider to {provider_id}")
         
         receipt_data['payment_link_enabled'] = True
+        receipt_data['payment_provider_name'] = provider_name  # Save provider name
         
         cur.execute(
             "UPDATE telegram_previews SET receipt_data = %s WHERE preview_id = %s",
