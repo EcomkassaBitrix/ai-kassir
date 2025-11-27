@@ -129,6 +129,7 @@ client: email (проверь формат), phone (+7...), МОЖНО null ес
 
 JSON:"""
     
+    # Updated 2025-11-27: Added detailed rules for service vs commodity detection
     print(f"[DEBUG] Using AI provider: {active_provider}")
     
     if active_provider == 'gigachat':

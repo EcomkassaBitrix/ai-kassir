@@ -613,7 +613,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         delete_preview_data(preview_id)
     
     # CRITICAL: Check specific edit_* patterns BEFORE general edit_
-    elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_payment_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
+    elif callback_data.startswith('edit_item_') or callback_data.startswith('edit_price_') or callback_data.startswith('edit_quantity_') or callback_data.startswith('edit_payment_') or callback_data.startswith('edit_operation_type_') or callback_data.startswith('edit_email_') or callback_data.startswith('edit_phone_'):
         # Extract field type and preview_id
         print(f"[DEBUG] Edit field button clicked! callback_data: {callback_data}")
         if callback_data.startswith('edit_item_'):
@@ -642,6 +642,21 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             ]
             
             edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, payment_buttons)
+            return create_response({'ok': True})
+        elif callback_data.startswith('edit_operation_type_'):
+            field = 'operation_type'
+            preview_id = callback_data.replace('edit_operation_type_', '')
+            prompt_text = "🔄 <b>Выбери тип операции:</b>"
+            
+            operation_buttons = [
+                [{"text": "🛒 Приход (продажа)", "callback_data": f"set_operation_sell_{preview_id}"}],
+                [{"text": "↩️ Возврат прихода", "callback_data": f"set_operation_refund_{preview_id}"}],
+                [{"text": "📝 Коррекция прихода", "callback_data": f"set_operation_sell_correction_{preview_id}"}],
+                [{"text": "📝 Коррекция расхода", "callback_data": f"set_operation_refund_correction_{preview_id}"}],
+                [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
+            ]
+            
+            edit_message_with_buttons(bot_token, chat_id, message_id, prompt_text, operation_buttons)
             return create_response({'ok': True})
         elif callback_data.startswith('edit_email_'):
             field = 'email'
@@ -675,6 +690,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             [{"text": "💰 Цену", "callback_data": f"edit_price_{preview_id}"}],
             [{"text": "📊 Количество", "callback_data": f"edit_quantity_{preview_id}"}],
             [{"text": "💳 Способ оплаты", "callback_data": f"edit_payment_{preview_id}"}],
+            [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
             [{"text": "📧 Email клиента", "callback_data": f"edit_email_{preview_id}"}],
             [{"text": "📱 Телефон клиента", "callback_data": f"edit_phone_{preview_id}"}],
             [{"text": "« Назад к чеку", "callback_data": f"back_{preview_id}"}]
@@ -791,6 +807,37 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         update_preview_payment(preview_id, payment_type)
         
         edit_message(bot_token, chat_id, message_id, "✅ Способ оплаты изменен!\n\nВозвращаю к чеку...")
+        
+        # Wait a bit and show updated preview
+        import time
+        time.sleep(1)
+        
+        # Trigger back button logic
+        callback_query['data'] = f"back_{preview_id}"
+        return handle_callback_query(callback_query, bot_token)
+    
+    elif callback_data.startswith('set_operation_'):
+        # Extract operation type and preview_id
+        parts = callback_data.replace('set_operation_', '').split('_')
+        operation_type = parts[0]
+        preview_id = '_'.join(parts[1:])
+        
+        preview_data = get_preview_data(preview_id)
+        if not preview_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
+        
+        # Update operation type in preview data
+        update_preview_operation_type(preview_id, operation_type)
+        
+        operation_names = {
+            'sell': '🛒 Приход (продажа)',
+            'refund': '↩️ Возврат прихода',
+            'sell_correction': '📝 Коррекция прихода',
+            'refund_correction': '📝 Коррекция расхода'
+        }
+        
+        edit_message(bot_token, chat_id, message_id, f"✅ Тип операции изменен на: {operation_names.get(operation_type, operation_type)}\n\nВозвращаю к чеку...")
         
         # Wait a bit and show updated preview
         import time
