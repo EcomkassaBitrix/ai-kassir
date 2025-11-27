@@ -18,6 +18,8 @@ interface Message {
   previewData?: any;
   hasError?: boolean;
   errorMessage?: string;
+  paymentLink?: string;
+  qrCode?: string;
 }
 
 interface ChatMessageProps {
@@ -124,33 +126,96 @@ export const ChatMessage = ({
             </div>
           )}
           {message.receiptData && !message.hasError && (
-            <div className="mt-3 pt-3 border-t border-primary/20 space-y-2">
-              <div className="flex items-center gap-2 text-xs text-accent">
-                <Icon name="FileText" size={16} />
-                {message.receiptUuid && message.receiptPermalink ? (
-                  <a 
-                    href={message.receiptPermalink} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="hover:underline"
-                  >
-                    Чек №{message.receiptUuid}
-                  </a>
-                ) : (
-                  <span>Чек создан</span>
-                )}
-              </div>
-              <div className="text-xs opacity-70 space-y-1">
-                {message.receiptData.items?.map((item: any, idx: number) => (
-                  <div key={idx} className="flex justify-between">
-                    <span>{item.name} x{item.quantity}</span>
-                    <span>{item.price}₽</span>
+            <div className="mt-3 pt-3 border-t border-primary/20 space-y-3">
+              {message.paymentLink ? (
+                <>
+                  <div className="text-sm">
+                    <div className="flex items-start gap-2 mb-2">
+                      <Icon name="CheckCircle" size={18} className="text-green-500 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <div className="font-semibold text-green-600 dark:text-green-400 mb-1">
+                          Ссылка создана и ждет оплаты!
+                        </div>
+                        <div className="space-y-1 text-xs opacity-80">
+                          {message.receiptData.items?.map((item: any, idx: number) => (
+                            <div key={idx}>
+                              • {item.name} — {item.price}₽ x{item.quantity}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-primary/10">
+                          <div className="flex items-center gap-2">
+                            <Icon name="DollarSign" size={14} />
+                            <span className="font-semibold">Итого: {message.receiptData.total}₽</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Icon name="CreditCard" size={14} />
+                            <span>Карта</span>
+                          </div>
+                        </div>
+                        {message.receiptUuid && (
+                          <div className="flex items-center gap-2 mt-2 text-xs">
+                            <Icon name="Hash" size={14} />
+                            <span>UUID: {message.receiptUuid}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                ))}
-                <div className="pt-1 border-t border-primary/10 font-semibold">
-                  Итого: {message.receiptData.total}₽
-                </div>
-              </div>
+                  <div className="bg-accent/5 p-3 rounded-lg space-y-2">
+                    <div className="text-xs font-semibold flex items-center gap-2">
+                      <Icon name="Link" size={14} />
+                      <span>Ссылка на оплату:</span>
+                    </div>
+                    <a 
+                      href={message.paymentLink} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline break-all block"
+                    >
+                      {message.paymentLink}
+                    </a>
+                    {message.qrCode && (
+                      <div className="flex justify-center pt-2">
+                        <img 
+                          src={message.qrCode} 
+                          alt="QR код для оплаты" 
+                          className="w-40 h-40 border-2 border-primary/20 rounded-lg bg-white p-2"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-xs text-accent">
+                    <Icon name="FileText" size={16} />
+                    {message.receiptUuid && message.receiptPermalink ? (
+                      <a 
+                        href={message.receiptPermalink} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                      >
+                        Чек №{message.receiptUuid}
+                      </a>
+                    ) : (
+                      <span>Чек создан</span>
+                    )}
+                  </div>
+                  <div className="text-xs opacity-70 space-y-1">
+                    {message.receiptData.items?.map((item: any, idx: number) => (
+                      <div key={idx} className="flex justify-between">
+                        <span>{item.name} x{item.quantity}</span>
+                        <span>{item.price}₽</span>
+                      </div>
+                    ))}
+                    <div className="pt-1 border-t border-primary/10 font-semibold">
+                      Итого: {message.receiptData.total}₽
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </Card>

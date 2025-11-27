@@ -9,4 +9,6 @@ export interface Message {
   previewData?: any;
   hasError?: boolean;
   errorMessage?: string;
+  paymentLink?: string;
+  qrCode?: string;
 }

@@ -1,6 +1,9 @@
 import json
 import requests
 import urllib3
+import qrcode
+import io
+import base64
 from typing import Dict, Any
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -156,6 +159,39 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         print(f"Response status: {response.status_code}")
         print(f"Response body: {response.text[:1000]}")
+        
+        response_data = response.json() if response.status_code == 200 else None
+        
+        if response_data and response_data.get('invoice_payload', {}).get('link'):
+            payment_link = response_data['invoice_payload']['link']
+            
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(payment_link)
+            qr.make(fit=True)
+            
+            img = qr.make_image(fill_color="black", back_color="white")
+            
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            buffer.seek(0)
+            qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            response_data['qr_code'] = f"data:image/png;base64,{qr_base64}"
+            
+            return {
+                'statusCode': response.status_code,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'isBase64Encoded': False,
+                'body': json.dumps(response_data, ensure_ascii=False)
+            }
         
         return {
             'statusCode': response.status_code,

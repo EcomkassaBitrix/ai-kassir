@@ -188,6 +188,8 @@ export const useReceiptHandlers = (
         receiptPermalink: data.permalink,
         hasError: !data.success,
         errorMessage: !data.success ? (data.message || data.error || 'Неизвестная ошибка') : undefined,
+        paymentLink: data.payment_link,
+        qrCode: data.qr_code,
       };
 
       setMessages((prev) => {
