@@ -435,7 +435,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if 'message' in preview_result:
                 response_text = preview_result['message']
             else:
-                response_text = f"❌ Ошибка: {preview_result.get('error', 'Не удалось создать чек')}"
+                error_msg = preview_result.get('error', 'Не удалось создать чек')
+                # Don't duplicate emoji if error already has one
+                if error_msg.startswith('❌'):
+                    response_text = error_msg
+                else:
+                    response_text = f"❌ {error_msg}"
             
             send_telegram_message(bot_token, chat_id, response_text)
         

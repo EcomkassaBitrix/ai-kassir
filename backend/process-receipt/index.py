@@ -433,7 +433,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'Access-Control-Allow-Origin': '*'
                 },
                 'body': json.dumps({
-                    'error': '❌ Я ИИ-кассир и помогаю только с созданием чеков. Укажи товар/услугу, цену и email клиента для создания чека.'
+                    'error': 'Привет! 👋 Я помогаю создавать чеки.\n\nУкажи товар, цену и email клиента.\n\nНапример:\n• Кофе 200₽ test@mail.ru\n• Стрижка 1500₽'
                 })
             }
     
