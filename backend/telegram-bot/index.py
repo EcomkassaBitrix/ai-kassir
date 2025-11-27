@@ -508,6 +508,81 @@ def send_photo(bot_token: str, chat_id: int, photo_url: str, caption: str = '') 
         print(f"[ERROR] Failed to send photo: {e}")
 
 
+def generate_qr_code(payment_link: str) -> Optional[str]:
+    '''
+    Generate QR code from payment link and return base64 data URL
+    Returns: data URL string or None if failed
+    '''
+    try:
+        import qrcode
+        import io
+        import base64
+        
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(payment_link)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        buffer.seek(0)
+        
+        img_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+        return f"data:image/png;base64,{img_base64}"
+    except Exception as e:
+        print(f"[ERROR] Failed to generate QR code: {e}")
+        return None
+
+
+def send_photo_base64(bot_token: str, chat_id: int, photo_data_url: str, caption: str = '') -> None:
+    '''Send photo from base64 data URL to Telegram chat'''
+    try:
+        import base64
+        
+        if not photo_data_url.startswith('data:image/'):
+            print(f"[ERROR] Invalid data URL format")
+            return
+        
+        base64_data = photo_data_url.split(',', 1)[1]
+        photo_bytes = base64.b64decode(base64_data)
+        
+        url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+        
+        boundary = '----WebKitFormBoundary' + os.urandom(16).hex()
+        body = (
+            f'--{boundary}\r\n'
+            f'Content-Disposition: form-data; name="chat_id"\r\n\r\n'
+            f'{chat_id}\r\n'
+            f'--{boundary}\r\n'
+            f'Content-Disposition: form-data; name="caption"\r\n\r\n'
+            f'{caption}\r\n'
+            f'--{boundary}\r\n'
+            f'Content-Disposition: form-data; name="photo"; filename="qr.png"\r\n'
+            f'Content-Type: image/png\r\n\r\n'
+        ).encode('utf-8')
+        
+        body += photo_bytes
+        body += f'\r\n--{boundary}--\r\n'.encode('utf-8')
+        
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                'Content-Type': f'multipart/form-data; boundary={boundary}'
+            }
+        )
+        
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        print(f"[ERROR] Failed to send photo from base64: {e}")
+
+
 def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = False, chat_id: int = None) -> Dict[str, Any]:
     process_receipt_url = 'https://functions.poehali.dev/734da785-2867-4c5d-b20c-90fc6d86b11c'
     
@@ -954,9 +1029,18 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             
             edit_message(bot_token, chat_id, message_id, response_text)
             
-            # CRITICAL: Send QR code as photo if available
+            # CRITICAL: Send QR code as photo - from Ecomkassa or generate from link
             if qr_code:
+                # QR code from Ecomkassa API (URL)
                 send_photo(bot_token, chat_id, qr_code, "📱 Отсканируй QR-код для оплаты")
+            elif payment_link:
+                # Generate QR code from payment link
+                print(f"[DEBUG] No QR from API, generating from link: {payment_link[:50]}...")
+                qr_data_url = generate_qr_code(payment_link)
+                if qr_data_url:
+                    send_photo_base64(bot_token, chat_id, qr_data_url, "📱 Отсканируй QR-код для оплаты")
+                else:
+                    print(f"[ERROR] Failed to generate QR code from payment link")
             
             # CRITICAL: Save last successful request for /repeat command
             save_last_successful_request(chat_id, preview_id, preview_data)
