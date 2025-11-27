@@ -782,7 +782,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }
     
     # CRITICAL: If payment link requested but no provider selected, show error
-    if document_type == 'link' and not auto_selected_provider:
+    # Skip validation if edited_data already has payment_provider_id set
+    has_provider_in_edited_data = parsed_receipt.get('payment_link_enabled') and parsed_receipt.get('payment_provider_id')
+    if document_type == 'link' and not auto_selected_provider and not has_provider_in_edited_data:
         return {
             'statusCode': 400,
             'headers': {
