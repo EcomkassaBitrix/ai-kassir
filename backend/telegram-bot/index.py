@@ -205,6 +205,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             response_text = "📋 <b>Проверь перед отправкой:</b>\n\n"
             response_text += f"<b>Тип документа:</b> {document_type_text}\n"
+            
+            # CRITICAL: Show provider only for payment links
+            if is_payment_link:
+                provider_name = receipt_data.get('payment_provider_name', 'Не выбран')
+                response_text += f"<b>💳 Провайдер:</b> {provider_name}\n"
+            
             response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
             
             # Items with all details
@@ -1948,6 +1954,12 @@ def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id:
     
     response_text = "📋 <b>Проверь перед отправкой:</b>\n\n"
     response_text += f"<b>Тип документа:</b> {document_type_text}\n"
+    
+    # CRITICAL: Show provider only for payment links
+    if payment_link_enabled:
+        provider_name = receipt_data.get('payment_provider_name', 'Не выбран')
+        response_text += f"<b>💳 Провайдер:</b> {provider_name}\n"
+    
     response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
     
     response_text += "<b>Товары/Услуги:</b>\n"
