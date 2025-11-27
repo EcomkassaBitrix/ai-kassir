@@ -2177,6 +2177,25 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
             return None
         cur = conn.cursor()
         
+        # Load user settings for company data
+        cur.execute("""
+            SELECT company_email, inn, sno, payment_address
+            FROM user_settings
+            WHERE user_id = %s
+        """, (user_id,))
+        settings_row = cur.fetchone()
+        
+        if not settings_row:
+            print(f"[ERROR] No user settings found for user_id: {user_id}")
+            cur.close()
+            conn.close()
+            return None
+        
+        company_email = settings_row[0] or 'company@example.com'
+        company_inn = settings_row[1] or ''
+        company_sno = settings_row[2] or 'usn_income'
+        company_payment_address = settings_row[3] or ''
+        
         cur.execute("""
             SELECT items, total, payments, operation_type, customer_email, payment_type
             FROM receipts 
@@ -2230,7 +2249,17 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
             'document_type': document_type,
             'payment_link_enabled': is_payment_link,
             'payment_provider_id': int(payment_type) if is_payment_link else None,
-            'payment_provider_name': provider_name if is_payment_link else None
+            'payment_provider_name': provider_name if is_payment_link else None,
+            'company': {
+                'email': company_email,
+                'inn': company_inn,
+                'sno': company_sno,
+                'payment_address': company_payment_address
+            },
+            'client': {
+                'email': row[4] or company_email,
+                'phone': None
+            }
         }
         
         return receipt_data
@@ -2247,6 +2276,25 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
             print("[ERROR] No DB connection in get_receipt_by_uuid")
             return None
         cur = conn.cursor()
+        
+        # Load user settings for company data
+        cur.execute("""
+            SELECT company_email, inn, sno, payment_address
+            FROM user_settings
+            WHERE user_id = %s
+        """, (user_id,))
+        settings_row = cur.fetchone()
+        
+        if not settings_row:
+            print(f"[ERROR] No user settings found for user_id: {user_id}")
+            cur.close()
+            conn.close()
+            return None
+        
+        company_email = settings_row[0] or 'company@example.com'
+        company_inn = settings_row[1] or ''
+        company_sno = settings_row[2] or 'usn_income'
+        company_payment_address = settings_row[3] or ''
         
         cur.execute("""
             SELECT items, total, payments, operation_type, customer_email, payment_type
@@ -2301,7 +2349,17 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
             'document_type': document_type,
             'payment_link_enabled': is_payment_link,
             'payment_provider_id': int(payment_type) if is_payment_link else None,
-            'payment_provider_name': provider_name if is_payment_link else None
+            'payment_provider_name': provider_name if is_payment_link else None,
+            'company': {
+                'email': company_email,
+                'inn': company_inn,
+                'sno': company_sno,
+                'payment_address': company_payment_address
+            },
+            'client': {
+                'email': row[4] or company_email,
+                'phone': None
+            }
         }
         
         return receipt_data
