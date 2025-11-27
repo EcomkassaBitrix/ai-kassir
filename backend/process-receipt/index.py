@@ -30,12 +30,14 @@ def get_ai_completion(user_text: str, settings: dict, context: str = '') -> Opti
 - "ivan@mail.ru" = "иван собака мейл точка ру" = "ivan at mail dot ru"
 - Числа: "2000" = "две тысячи" = "2к" = "2 тыщи"
 
-ВАЖНО про название товара/услуги (name):
-- Название товара - это все слова ДО указания цены
+КРИТИЧНО про название товара/услуги (name):
+- Название товара - это конкретный товар или услуга, которую продаешь
 - Примеры: "мебель на заказ за 1300₽" → name: "мебель на заказ"
 - Примеры: "Я продаю стрижку и укладку за 2000" → name: "стрижка и укладка"
 - Примеры: "кофе американо 200₽" → name: "кофе американо"
 - НЕ включай в название: цену, способ оплаты, email, телефон
+- ВАЖНО: Слова "платежная ссылка", "ссылка на оплату", "QR", "эквайринг" - это НЕ товар, а способ оплаты!
+- Если в запросе только "платежная ссылка" без товара - верни error: "Укажи товар/услугу для платежной ссылки. Пример: консультация 5000₽ ссылка сбербанк"
 
 Пользователь указывает данные из массивов:
 - items (товары/услуги): name, price, quantity, measure, vat, payment_method, payment_object
@@ -126,6 +128,8 @@ client: email (проверь формат), phone (+7...), МОЖНО null ес
 - "кофе" → {{"error":"Укажи цену. Email необязателен (будет дефолтный). Пример: кофе 200₽"}}
 - "стрижка test@mail.ru" → {{"error":"Укажи цену услуги. Пример: стрижка 1500₽ test@mail.ru"}}
 - "изготовление шкафа" → {{"error":"Укажи цену. Пример: изготовление шкафа 25000₽"}}
+- "Платежная ссылка на 1 рубль test@mail.ru" → {{"error":"Укажи товар/услугу для платежной ссылки. Что продаешь за 1 рубль? Пример: консультация 1₽ ссылка сбербанк"}}
+- "ссылка сбербанк 500₽" → {{"error":"Что продаешь за 500₽? Укажи товар/услугу. Пример: подписка 500₽ ссылка сбербанк"}}
 
 JSON:"""
     
@@ -757,8 +761,42 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             parsed_receipt['payments'][0]['type'] = int(provider_id)
             print(f"[DEBUG] Auto-applied payment provider: id={provider_id}, name={provider_name}")
     
+    # CRITICAL: Validate payment link has proper item name (not "платежная ссылка")
+    if document_type == 'link':
+        items = parsed_receipt.get('items', [])
+        if items and len(items) > 0:
+            item_name = items[0].get('name', '').lower()
+            # Check if item name is generic payment link keywords
+            invalid_names = ['платежная ссылка', 'ссылка на оплату', 'ссылка', 'qr', 'эквайринг', 'платеж', 'оплата']
+            if item_name in invalid_names or not item_name:
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({
+                        'success': False,
+                        'message': '⚠️ Укажи товар или услугу для платежной ссылки.\n\n"Платежная ссылка" - это способ оплаты, а не товар.\n\nПример:\n• "Консультация 5000₽ ссылка Сбербанк"\n• "Подписка на месяц 1000₽ ссылка ЮКасса"'
+                    })
+                }
+    
+    # CRITICAL: If payment link requested but no provider selected, show error
+    if document_type == 'link' and not auto_selected_provider:
+        return {
+            'statusCode': 400,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({
+                'success': False,
+                'message': '⚠️ Для платежной ссылки нужно указать провайдера.\n\nУкажи провайдера в запросе:\n• Сбербанк\n• ЮКасса\n• Тинькофф\n• Альфа-Банк\n\nПример: "Консультация 5000₽ ссылка Сбербанк"\n\nИли подключи провайдеров в ЕкомКасса:\n🔗 https://app.ecomkassa.ru/admin/integrations'
+            })
+        }
+    
     # CRITICAL: If provider keyword detected but provider not available, show error
-    elif detected_provider_keyword and document_type == 'link' and not auto_selected_provider:
+    if detected_provider_keyword and document_type == 'link' and not auto_selected_provider:
         provider_name_ru = {
             'сбербанк': 'Сбербанк',
             'юкасса': 'ЮКасса',
