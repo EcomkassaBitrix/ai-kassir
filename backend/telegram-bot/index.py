@@ -61,12 +61,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Handle voice messages
         if 'voice' in message:
+            # Send processing notification
+            send_telegram_message(bot_token, chat_id, "🎤 Распознаю голос...")
+            
             voice_result = handle_voice_message(message, bot_token)
             if voice_result.get('error'):
                 send_telegram_message(bot_token, chat_id, f"❌ Ошибка: {voice_result['error']}")
                 return create_response({'ok': True})
             text = voice_result.get('text', '')
             print(f"[DEBUG] Voice transcribed: {text}")
+            
+            # Show transcribed text to user
+            send_telegram_message(bot_token, chat_id, f"✅ Распознано: \"{text}\"\n\nОбрабатываю...")
         else:
             text = message.get('text', '')
         
