@@ -510,9 +510,14 @@ def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = Fal
             print(f"[DEBUG] Auto-detected payment provider: {provider_name}")
             break
     
-    # If provider detected and document_type is 'link', load user's providers and match
+    # CRITICAL: If provider detected, force document_type to 'link'
+    if detected_provider_name:
+        document_type = 'link'
+        print(f"[DEBUG] Provider detected - forcing document_type to 'link'")
+    
+    # If provider detected, load user's providers and match
     auto_selected_provider = None
-    if detected_provider_name and document_type == 'link':
+    if detected_provider_name:
         user_providers = get_payment_providers(user_id)
         if user_providers:
             # Match detected provider name with user's available providers
