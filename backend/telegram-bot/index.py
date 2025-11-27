@@ -1583,6 +1583,56 @@ def edit_message(bot_token: str, chat_id: int, message_id: int, text: str) -> No
         print(f"[ERROR] Failed to edit message: {e}")
 
 
+def store_preview_data(preview_id: str, preview_data: Dict[str, Any], chat_id: int) -> None:
+    '''Store preview data in database for later confirmation'''
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        print("[ERROR] DATABASE_URL not set")
+        return
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        # Ensure table exists
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS telegram_previews ("
+            "preview_id TEXT PRIMARY KEY, "
+            "chat_id BIGINT, "
+            "user_message TEXT, "
+            "user_id TEXT, "
+            "receipt_data JSONB, "
+            "payment_type TEXT, "
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        
+        # Extract data from preview_data dict
+        user_message = preview_data.get('user_message', '')
+        user_id = preview_data.get('user_id', '')
+        receipt_data = preview_data.get('receipt_data')
+        
+        # Insert or update
+        cur.execute(
+            "INSERT INTO telegram_previews (preview_id, chat_id, user_message, user_id, receipt_data, created_at) "
+            "VALUES (%s, %s, %s, %s, %s, NOW()) "
+            "ON CONFLICT (preview_id) DO UPDATE SET "
+            "chat_id = EXCLUDED.chat_id, "
+            "user_message = EXCLUDED.user_message, "
+            "user_id = EXCLUDED.user_id, "
+            "receipt_data = EXCLUDED.receipt_data, "
+            "created_at = NOW()",
+            (preview_id, chat_id, user_message, user_id, json.dumps(receipt_data) if receipt_data else None)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[DEBUG] Preview data stored successfully: preview_id={preview_id}")
+    except Exception as e:
+        print(f"[ERROR] Failed to store preview data: {e}")
+
+
 def save_preview_data(chat_id: int, user_message: str, user_id: str, receipt_data: dict = None) -> str:
     import time
     preview_id = f"{chat_id}_{int(time.time())}"
