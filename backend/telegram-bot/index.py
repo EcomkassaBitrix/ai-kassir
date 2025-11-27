@@ -195,7 +195,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'refund_correction': '📝 Коррекция расхода'
             }
             
-            response_text = "📋 <b>Проверь чек перед отправкой:</b>\n\n"
+            # CRITICAL: Detect document type from receipt_data
+            payment_link_enabled = receipt_data.get('payment_link_enabled', False)
+            document_type_text = "🔗 Платежная ссылка" if payment_link_enabled else "🧾 Чек"
+            
+            response_text = "📋 <b>Проверь перед отправкой:</b>\n\n"
+            response_text += f"<b>Тип документа:</b> {document_type_text}\n"
             response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
             
             # Items with all details
@@ -1933,7 +1938,12 @@ def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id:
         'refund_correction': '📝 Коррекция расхода'
     }
     
-    response_text = "📋 <b>Проверь чек перед отправкой:</b>\n\n"
+    # CRITICAL: Detect document type from receipt_data
+    payment_link_enabled = receipt_data.get('payment_link_enabled', False)
+    document_type_text = "🔗 Платежная ссылка" if payment_link_enabled else "🧾 Чек"
+    
+    response_text = "📋 <b>Проверь перед отправкой:</b>\n\n"
+    response_text += f"<b>Тип документа:</b> {document_type_text}\n"
     response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
     
     response_text += "<b>Товары/Услуги:</b>\n"
