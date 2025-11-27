@@ -1,0 +1,1 @@
+ALTER TABLE ai_settings ADD COLUMN yandex_speechkit_key VARCHAR(255);

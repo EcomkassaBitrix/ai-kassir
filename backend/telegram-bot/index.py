@@ -1461,18 +1461,20 @@ def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
     if not file_id:
         return {'error': 'Voice file_id not found'}
     
-    # Check if Yandex SpeechKit is enabled in admin settings
+    # Check if Yandex SpeechKit is enabled in admin settings and get API key from DB
     dsn = os.environ.get('DATABASE_URL')
     speechkit_enabled = False
+    api_key = None
     
     if dsn:
         try:
             conn = psycopg2.connect(dsn)
             cur = conn.cursor()
-            cur.execute("SELECT active_provider FROM ai_settings ORDER BY id DESC LIMIT 1")
+            cur.execute("SELECT active_provider, yandex_speechkit_key FROM ai_settings ORDER BY id DESC LIMIT 1")
             row = cur.fetchone()
             if row and row[0] == 'yandex_speechkit':
                 speechkit_enabled = True
+                api_key = row[1] if len(row) > 1 else None
             cur.close()
             conn.close()
         except Exception as e:
@@ -1481,8 +1483,6 @@ def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
     if not speechkit_enabled:
         return {'error': 'Распознавание речи не настроено. Включите Yandex SpeechKit в админке.'}
     
-    # Get API key
-    api_key = os.environ.get('YANDEX_SPEECHKIT_API_KEY')
     if not api_key:
         return {'error': 'SpeechKit API key not configured'}
     

@@ -30,6 +30,8 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
   const [loading, setLoading] = useState(true);
   const [modelSelectMode, setModelSelectMode] = useState(false);
   const [tempProvider, setTempProvider] = useState<string>('');
+  const [yandexSpeechKitKey, setYandexSpeechKitKey] = useState<string>('');
+  const [showKeyInput, setShowKeyInput] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -52,6 +54,7 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
       setSelectedModel(data.selected_model || null);
       setAvailableModels(data.available_models || []);
       setProviders(data.available_providers || []);
+      setYandexSpeechKitKey(data.yandex_speechkit_key || '');
     } catch (error) {
       toast.error('Ошибка загрузки настроек ИИ');
     } finally {
@@ -59,20 +62,26 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
     }
   };
 
-  const validateKey = async (providerId: string, modelId?: string) => {
+  const validateKey = async (providerId: string, modelId?: string, speechKitKey?: string) => {
     const validatingToast = toast.loading('Проверяю API ключ...');
     
     try {
+      const body: any = { 
+        provider_id: providerId,
+        selected_model: modelId 
+      };
+      
+      if (providerId === 'yandex_speechkit' && speechKitKey) {
+        body.yandex_speechkit_key = speechKitKey;
+      }
+      
       const response = await fetch('https://functions.poehali.dev/0924c3f7-bb48-46bb-9dbb-fddba37c9280', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-Admin-Token': adminToken
         },
-        body: JSON.stringify({ 
-          provider_id: providerId,
-          selected_model: modelId 
-        })
+        body: JSON.stringify(body)
       });
 
       const data = await response.json();
@@ -108,6 +117,8 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
       setTempProvider(providerId);
       setModelSelectMode(true);
       await loadSettings();
+    } else if (providerId === 'yandex_speechkit') {
+      setShowKeyInput(true);
     } else {
       const isValid = await validateKey(providerId);
       
@@ -128,6 +139,22 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
       setSelectedModel(modelId);
       setModelSelectMode(false);
       toast.success('Провайдер с моделью активирован ✓');
+      await loadSettings();
+    }
+  };
+
+  const handleSpeechKitActivate = async () => {
+    if (!yandexSpeechKitKey.trim()) {
+      toast.error('Введите API ключ Yandex SpeechKit');
+      return;
+    }
+    
+    const isValid = await validateKey('yandex_speechkit', undefined, yandexSpeechKitKey);
+    
+    if (isValid) {
+      setActiveProvider('yandex_speechkit');
+      setShowKeyInput(false);
+      toast.success('Yandex SpeechKit активирован ✓');
       await loadSettings();
     }
   };
@@ -295,8 +322,43 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
           </div>
         )}
 
+        {/* Форма ввода ключа Yandex SpeechKit */}
+        {showKeyInput && !modelSelectMode && (
+          <div className="bg-blue-950/30 border border-blue-800 rounded-xl p-4">
+            <div className="flex items-center gap-2 text-blue-400 mb-3">
+              <Icon name="Key" size={16} />
+              <span className="font-semibold">Введите API ключ Yandex SpeechKit</span>
+            </div>
+            <input
+              type="text"
+              value={yandexSpeechKitKey}
+              onChange={(e) => setYandexSpeechKitKey(e.target.value)}
+              placeholder="AQVNxxxxxxxxxx..."
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-600 mb-3"
+            />
+            <div className="flex gap-2">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleSpeechKitActivate}
+                className="flex-1"
+              >
+                Активировать
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowKeyInput(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                Отмена
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Список провайдеров голоса */}
-        {!modelSelectMode && speechProviders.map((provider) => {
+        {!modelSelectMode && !showKeyInput && speechProviders.map((provider) => {
           const isActive = activeProvider === provider.id;
           if (isActive) return null;
 
@@ -308,27 +370,21 @@ export const AISettingsSectionNew = ({ adminToken }: AISettingsSectionNewProps) 
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold text-white">{provider.name}</h3>
-                  {!provider.has_secret && (
-                    <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full">
-                      Нет ключа
+                  {yandexSpeechKitKey && (
+                    <span className="text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded-full">
+                      Ключ сохранён
                     </span>
                   )}
                 </div>
                 <p className="text-sm text-gray-400 mt-1">{provider.description}</p>
-                {!provider.has_secret && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    Добавьте секрет <code className="bg-gray-800 px-1.5 py-0.5 rounded text-gray-300">{provider.secret_name}</code>
-                  </p>
-                )}
               </div>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handleProviderChange(provider.id)}
-                disabled={!provider.has_secret}
-                className="bg-transparent border-gray-600 text-gray-300 hover:bg-gray-800 disabled:opacity-50"
+                className="bg-transparent border-gray-600 text-gray-300 hover:bg-gray-800"
               >
-                Активировать
+                {yandexSpeechKitKey ? 'Включить' : 'Настроить'}
               </Button>
             </div>
           );
