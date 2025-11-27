@@ -2649,19 +2649,46 @@ def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id:
     
     # CRITICAL: Detect document type from receipt_data
     payment_link_enabled = receipt_data.get('payment_link_enabled', False)
-    document_type_text = "🔗 Платежная ссылка" if payment_link_enabled else "🧾 Чек"
     
     response_text = "📋 <b>Проверь перед отправкой:</b>\n\n"
-    response_text += f"<b>Тип документа:</b> {document_type_text}\n"
     
-    # CRITICAL: Show provider only for payment links
+    # Document type with provider on same line for payment links
     if payment_link_enabled:
         provider_name = receipt_data.get('payment_provider_name', 'Не выбран')
-        response_text += f"<b>💳 Провайдер:</b> {provider_name}\n"
+        response_text += f"<b>Тип документа:</b> 🔗 Платежная ссылка Провайдер: {provider_name}\n"
+    else:
+        response_text += f"<b>Тип документа:</b> 🧾 Чек\n"
     
-    response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n\n"
+    # Remove emojis from operation names
+    operation_names_clean = {
+        'sell': 'Приход',
+        'refund': 'Возврат прихода',
+        'sell_correction': 'Коррекция прихода',
+        'refund_correction': 'Коррекция расхода'
+    }
     
-    response_text += "<b>Товары/Услуги:</b>\n"
+    response_text += f"<b>Тип операции:</b> {operation_names_clean.get(operation_type, operation_type)}\n\n"
+    
+    # Company info (SNO and payment address) BEFORE items
+    company_data_preview = receipt_data.get('company', {})
+    sno_preview = company_data_preview.get('sno', 'usn_income')
+    payment_address_preview = company_data_preview.get('payment_address', '')
+    
+    sno_names_preview = {
+        'usn_income': 'УСН доход',
+        'usn_income_outcome': 'УСН доход-расход',
+        'osn': 'ОСНО',
+        'esn': 'ЕСХН',
+        'patent': 'Патент'
+    }
+    
+    response_text += f"<b>💼 СНО:</b> {sno_names_preview.get(sno_preview, sno_preview)}\n"
+    if payment_address_preview:
+        response_text += f"<b>📍 Адрес расчетов:</b> {payment_address_preview}\n"
+    
+    response_text += f"<b>📧 Email клиента:</b> {client_data.get('email', 'Не указан')}\n"
+    
+    response_text += "\n<b>Товары/Услуги:</b>\n"
     for idx, item in enumerate(items, 1):
         name = item.get('name', 'Товар')
         price = item.get('price', 0)
@@ -2691,13 +2718,9 @@ def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id:
     
     response_text += f"\n<b>💰 Итого:</b> {total}₽\n\n"
     
-    # Check if payment link is enabled
-    payment_link_enabled = receipt_data.get('payment_link_enabled', False)
-    
+    # Payment method - same as show_receipt_preview
     if payment_link_enabled:
-        # Show payment link info
-        provider_name = receipt_data.get('payment_provider_name', 'Не указан')
-        response_text += f"<b>🔗 Способ оплаты:</b> Ссылка на оплату ({provider_name})\n"
+        response_text += f"<b>Способ оплаты:</b> 💳 Безналичный\n"
     elif payments and len(payments) > 1:
         response_text += "<b>Способы оплаты:</b>\n"
         payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
@@ -2710,29 +2733,6 @@ def show_updated_preview(bot_token: str, chat_id: int, preview_id: str, user_id:
         payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
         payment_str = payment_names.get(str(payment_type), "💳 Безналичный")
         response_text += f"<b>Способ оплаты:</b> {payment_str}\n"
-    
-    response_text += f"\n<b>📧 Email клиента:</b> {client_data.get('email', 'Не указан')}\n"
-    
-    client_phone = client_data.get('phone')
-    if client_phone:
-        response_text += f"<b>📱 Телефон:</b> {client_phone}\n"
-    
-    # Company info (SNO and payment address)
-    company_data_preview = receipt_data.get('company', {})
-    sno_preview = company_data_preview.get('sno', 'usn_income')
-    payment_address_preview = company_data_preview.get('payment_address', '')
-    
-    sno_names_preview = {
-        'usn_income': 'УСН доход',
-        'usn_income_outcome': 'УСН доход-расход',
-        'osn': 'ОСНО',
-        'esn': 'ЕСХН',
-        'patent': 'Патент'
-    }
-    
-    response_text += f"\n<b>💼 СНО:</b> {sno_names_preview.get(sno_preview, sno_preview)}\n"
-    if payment_address_preview:
-        response_text += f"<b>📍 Адрес расчетов:</b> {payment_address_preview}\n"
     
     # CRITICAL: Check balance between items total and payments total
     # Calculate items total
