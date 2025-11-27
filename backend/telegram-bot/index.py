@@ -802,11 +802,32 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
     elif callback_data.startswith('edit_group_'):
         # Handle group menu selections
         # Format: edit_group_doc_265009146_1764234824 -> group_type=doc, preview_id=265009146_1764234824
-        parts = callback_data.replace('edit_group_', '').split('_', 1)  # Split only on first underscore
-        group_type = parts[0]
-        preview_id = parts[1] if len(parts) > 1 else ''
+        # Format: edit_group_company_265009146_1764234824 -> group_type=company, preview_id=265009146_1764234824
         
-        print(f"[DEBUG] edit_group_ callback: group_type='{group_type}', preview_id='{preview_id}'")
+        # Remove prefix 'edit_group_'
+        remaining = callback_data.replace('edit_group_', '', 1)
+        
+        # Group types: doc, company, client, items, payment
+        # Preview ID format: chat_id_timestamp (e.g., 265009146_1764234824)
+        # We need to extract group_type (one of known types) and preview_id (rest)
+        
+        known_groups = ['doc', 'company', 'client', 'items', 'payment']
+        group_type = ''
+        preview_id = ''
+        
+        for group in known_groups:
+            if remaining.startswith(group + '_'):
+                group_type = group
+                preview_id = remaining[len(group) + 1:]  # +1 for underscore
+                break
+        
+        if not group_type:
+            # Fallback to old logic if no match
+            parts = remaining.split('_', 1)
+            group_type = parts[0]
+            preview_id = parts[1] if len(parts) > 1 else ''
+        
+        print(f"[DEBUG] edit_group_ callback: remaining='{remaining}', group_type='{group_type}', preview_id='{preview_id}'")
         
         preview_data = get_preview_data(preview_id)
         if not preview_data:
