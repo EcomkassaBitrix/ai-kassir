@@ -1578,4 +1578,94 @@ def handle_voice_message(message: dict, bot_token: str) -> Dict[str, Any]:
         return {'error': f'HTTP error {e.code}'}
     except Exception as e:
         print(f"[ERROR] Voice handling failed: {e}")
+        return {'error': f'Failed to process voice: {str(e)}'}
+
+
+def update_preview_payment(preview_id: str, payment_type: str) -> bool:
+    """Update payment type in telegram_previews receipt_data"""
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return False
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT receipt_data FROM telegram_previews WHERE preview_id = %s",
+            (preview_id,)
+        )
+        result = cur.fetchone()
+        
+        if not result or not result[0]:
+            print(f"[ERROR] No receipt_data found for preview_id: {preview_id}")
+            cur.close()
+            conn.close()
+            return False
+        
+        receipt_data = result[0]
+        
+        if 'payments' in receipt_data and len(receipt_data['payments']) > 0:
+            receipt_data['payments'][0]['type'] = payment_type
+            print(f"[DEBUG] Updated payment type to {payment_type}")
+        
+        cur.execute(
+            "UPDATE telegram_previews SET receipt_data = %s WHERE preview_id = %s",
+            (json.dumps(receipt_data), preview_id)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print(f"[SUCCESS] Updated payment type for preview {preview_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to update preview payment: {str(e)}")
+        return False
+
+
+def update_preview_operation_type(preview_id: str, operation_type: str) -> bool:
+    """Update operation type in telegram_previews receipt_data"""
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return False
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT receipt_data FROM telegram_previews WHERE preview_id = %s",
+            (preview_id,)
+        )
+        result = cur.fetchone()
+        
+        if not result or not result[0]:
+            print(f"[ERROR] No receipt_data found for preview_id: {preview_id}")
+            cur.close()
+            conn.close()
+            return False
+        
+        receipt_data = result[0]
+        
+        receipt_data['operation_type'] = operation_type
+        print(f"[DEBUG] Updated operation_type to {operation_type}")
+        
+        cur.execute(
+            "UPDATE telegram_previews SET receipt_data = %s WHERE preview_id = %s",
+            (json.dumps(receipt_data), preview_id)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print(f"[SUCCESS] Updated operation_type for preview {preview_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to update preview operation_type: {str(e)}")
+        return False
         return {'error': str(e)}
