@@ -153,10 +153,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 uuid_to_find = parts[1]
                 user_id = get_user_id_for_telegram(chat_id)
                 
+                print(f"[DEBUG] Repeat by UUID: {uuid_to_find}, user_id: {user_id}, chat_id: {chat_id}")
+                
                 # Find receipt by UUID
                 receipt_data = get_receipt_by_uuid(uuid_to_find, user_id)
                 
                 if not receipt_data:
+                    print(f"[ERROR] Receipt not found: UUID={uuid_to_find}, user_id={user_id}")
                     send_telegram_message(bot_token, chat_id, f"❌ Чек с UUID {uuid_to_find} не найден")
                     return create_response({'ok': True})
                 
