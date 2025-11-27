@@ -309,7 +309,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 chat_id, 
                 response_text,
                 [
-                    [{"text": "✅ Отправить чек", "callback_data": f"confirm_{preview_id}"}],
+                    [{"text": "✅ Отправить запрос", "callback_data": f"confirm_{preview_id}"}],
                     [{"text": "✏️ Изменить", "callback_data": f"edit_{preview_id}"}],
                     [{"text": "❌ Отменить", "callback_data": f"cancel_{preview_id}"}]
                 ]
@@ -1246,7 +1246,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
                 message_id,
                 response_text,
                 [
-                    [{"text": "✅ Отправить чек", "callback_data": f"confirm_{preview_id}"}],
+                    [{"text": "✅ Отправить запрос", "callback_data": f"confirm_{preview_id}"}],
                     [{"text": "✏️ Изменить", "callback_data": f"edit_{preview_id}"}],
                     [{"text": "❌ Отменить", "callback_data": f"cancel_{preview_id}"}]
                 ]
