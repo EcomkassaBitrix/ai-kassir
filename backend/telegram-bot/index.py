@@ -2119,7 +2119,7 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
         cur = conn.cursor()
         
         cur.execute("""
-            SELECT items, total, payments, operation_type, client_email, client_phone, company_sno, payment_address
+            SELECT items, total, payments, operation_type, customer_email, payment_type
             FROM receipts 
             WHERE id = %s AND user_id = %s
         """, (receipt_id, user_id))
@@ -2138,15 +2138,9 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
             'items': items,
             'total': float(row[1]),
             'payments': payments,
-            'operation_type': row[3] or 'sell',
-            'client': {
-                'email': row[4],
-                'phone': row[5]
-            },
-            'company': {
-                'sno': row[6] or 'usn_income',
-                'payment_address': row[7] or ''
-            }
+            'operation_type': row[3] or 'Приход',
+            'customer_email': row[4],
+            'payment_type': row[5] or '103'
         }
         
         return receipt_data
@@ -2165,7 +2159,7 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
         cur = conn.cursor()
         
         cur.execute("""
-            SELECT items, total, payments, operation_type, client_email, client_phone, company_sno, payment_address
+            SELECT items, total, payments, operation_type, customer_email, payment_type
             FROM receipts 
             WHERE uuid = %s AND user_id = %s
         """, (uuid_str, user_id))
@@ -2184,15 +2178,9 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
             'items': items,
             'total': float(row[1]),
             'payments': payments,
-            'operation_type': row[3] or 'sell',
-            'client': {
-                'email': row[4],
-                'phone': row[5]
-            },
-            'company': {
-                'sno': row[6] or 'usn_income',
-                'payment_address': row[7] or ''
-            }
+            'operation_type': row[3] or 'Приход',
+            'customer_email': row[4],
+            'payment_type': row[5] or '103'
         }
         
         return receipt_data
