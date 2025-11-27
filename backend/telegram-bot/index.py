@@ -119,24 +119,30 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             history = get_user_receipts_history(user_id, limit=10)
             
             if not history:
-                response_text = "📋 История чеков пуста"
-            else:
-                response_text = "📋 Последние 10 чеков:\n\n"
-                for receipt in history:
-                    created_at = receipt['created_at'].strftime('%d.%m.%Y %H:%M')
-                    status_emoji = '✅' if receipt['status'] == 'success' else '⚠️'
-                    total = receipt['total']
-                    uuid = receipt.get('uuid', 'N/A')
-                    
-                    items_text = ', '.join([item['name'] for item in receipt['items'][:2]])
-                    if len(receipt['items']) > 2:
-                        items_text += f" +{len(receipt['items']) - 2}"
-                    
-                    response_text += f"{status_emoji} {created_at}\n"
-                    response_text += f"{items_text}\n"
-                    response_text += f"💰 {total}₽ | UUID: {uuid}\n\n"
+                send_telegram_message(bot_token, chat_id, "📋 История чеков пуста")
+                return create_response({'ok': True})
             
-            send_telegram_message(bot_token, chat_id, response_text)
+            response_text = "📋 <b>Последние 10 чеков:</b>\n\nВыбери чек для повтора:"
+            
+            # Create buttons for each receipt
+            history_buttons = []
+            for idx, receipt in enumerate(history):
+                created_at = receipt['created_at'].strftime('%d.%m %H:%M')
+                status_emoji = '✅' if receipt['status'] == 'success' else '⚠️'
+                total = receipt['total']
+                receipt_id = receipt['id']
+                
+                items_text = ', '.join([item['name'] for item in receipt['items'][:2]])
+                if len(receipt['items']) > 2:
+                    items_text += f" +{len(receipt['items']) - 2}"
+                
+                button_text = f"{status_emoji} {created_at} • {items_text[:25]} • {total}₽"
+                history_buttons.append([{
+                    "text": button_text,
+                    "callback_data": f"repeat_receipt_{receipt_id}"
+                }])
+            
+            send_telegram_message_with_buttons(bot_token, chat_id, response_text, history_buttons)
             return create_response({'ok': True})
         
         if text.startswith('/repeat') or text.lower() in ['повтори', 'повтори последний', 'повтори запрос', 'повторить']:
@@ -773,6 +779,35 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             edit_message(bot_token, chat_id, message_id, f"❌ Ошибка: {error_msg}")
         
         delete_preview_data(preview_id)
+    
+    elif callback_data.startswith('repeat_receipt_'):
+        # Repeat receipt from history
+        receipt_id = int(callback_data.replace('repeat_receipt_', ''))
+        user_id = get_user_id_for_telegram(chat_id)
+        
+        # Load receipt data from database
+        receipt_data = get_receipt_by_id(receipt_id, user_id)
+        
+        if not receipt_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Чек не найден")
+            return create_response({'ok': True})
+        
+        # Generate new preview_id
+        import uuid
+        preview_id = str(uuid.uuid4())
+        
+        # Store preview data
+        preview_data = {
+            'receipt_data': receipt_data,
+            'user_id': user_id,
+            'user_message': f"Повтор чека ID {receipt_id}"
+        }
+        
+        store_preview_data(preview_id, preview_data, chat_id)
+        
+        # Show preview
+        show_receipt_preview(bot_token, chat_id, preview_data, preview_id)
+        return create_response({'ok': True})
         
     elif callback_data.startswith('cancel_'):
         preview_id = callback_data.replace('cancel_', '')
@@ -1980,6 +2015,89 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
     except Exception as e:
         print(f"[ERROR] Failed to update preview field: {e}")
         return False
+
+
+def get_user_receipts_history(user_id: str, limit: int = 10) -> list:
+    '''Get user's receipt history from database'''
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT id, items, total, status, uuid, created_at, operation_type, payments
+            FROM receipts 
+            WHERE user_id = %s 
+            ORDER BY created_at DESC 
+            LIMIT %s
+        """, (user_id, limit))
+        
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        history = []
+        for row in rows:
+            items = json.loads(row[1]) if isinstance(row[1], str) else row[1]
+            payments = json.loads(row[7]) if isinstance(row[7], str) else row[7]
+            
+            history.append({
+                'id': row[0],
+                'items': items,
+                'total': float(row[2]),
+                'status': row[3],
+                'uuid': row[4],
+                'created_at': row[5],
+                'operation_type': row[6],
+                'payments': payments
+            })
+        
+        return history
+    except Exception as e:
+        print(f"[ERROR] Failed to get receipts history: {e}")
+        return []
+
+
+def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]:
+    '''Get receipt data by ID for repeat functionality'''
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT items, total, payments, operation_type, client_email, client_phone, company_sno, payment_address
+            FROM receipts 
+            WHERE id = %s AND user_id = %s
+        """, (receipt_id, user_id))
+        
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not row:
+            return None
+        
+        items = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+        payments = json.loads(row[2]) if isinstance(row[2], str) else row[2]
+        
+        receipt_data = {
+            'items': items,
+            'total': float(row[1]),
+            'payments': payments,
+            'operation_type': row[3] or 'sell',
+            'client': {
+                'email': row[4],
+                'phone': row[5]
+            },
+            'company': {
+                'sno': row[6] or 'usn_income',
+                'payment_address': row[7] or ''
+            }
+        }
+        
+        return receipt_data
+    except Exception as e:
+        print(f"[ERROR] Failed to get receipt by ID: {e}")
+        return None
 
 
 def save_last_successful_request(chat_id: int, preview_id: str, preview_data: Dict[str, Any]) -> None:
