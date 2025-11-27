@@ -2446,10 +2446,16 @@ def show_receipt_preview(bot_token: str, chat_id: int, preview_data: Dict[str, A
     
     payment_link_enabled = receipt_data.get('payment_link_enabled', False)
     is_payment_link = payment_link_enabled
-    document_type_text = "🔗 Платежная ссылка" if is_payment_link else "🧾 Чек"
     
     response_text = "📋 <b>Проверь перед отправкой:</b>\n\n"
-    response_text += f"<b>Тип документа:</b> {document_type_text}\n"
+    
+    # Document type with provider on same line for payment links
+    if is_payment_link:
+        provider_name = receipt_data.get('payment_provider_name', 'Не выбран')
+        response_text += f"<b>Тип документа:</b> 🔗 Платежная ссылка Провайдер: {provider_name}\n"
+    else:
+        response_text += f"<b>Тип документа:</b> 🧾 Чек\n"
+    
     response_text += f"<b>Тип операции:</b> {operation_names.get(operation_type, operation_type)}\n"
     
     # Company info (SNO and payment address)
@@ -2518,8 +2524,8 @@ def show_receipt_preview(bot_token: str, chat_id: int, preview_data: Dict[str, A
     
     # Payment details
     if is_payment_link:
-        provider_name = receipt_data.get('payment_provider_name', 'Не выбран')
-        response_text += f"<b>Способ оплаты:</b> 🔗 Ссылка на оплату ({provider_name})\n"
+        # For payment links, payment method is always "Безналичный" (from provider)
+        response_text += f"<b>Способ оплаты:</b> 💳 Безналичный\n"
     elif payments and len(payments) > 1:
         response_text += "<b>Способы оплаты:</b>\n"
         payment_names = {'0': "💵 Наличные", '1': "💳 Безналичный", '2': "📝 Предоплата", '3': "🏦 Кредит", '4': "⚡ Иное"}
