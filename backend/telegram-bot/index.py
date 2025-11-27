@@ -647,6 +647,22 @@ def create_response(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def get_db_connection():
+    '''
+    Get PostgreSQL database connection
+    Returns: psycopg2 connection or None
+    '''
+    try:
+        dsn = os.environ.get('DATABASE_URL')
+        if not dsn:
+            print("[ERROR] DATABASE_URL not set")
+            return None
+        return psycopg2.connect(dsn)
+    except Exception as e:
+        print(f"[ERROR] Failed to connect to database: {e}")
+        return None
+
+
 def process_link_code(link_code: str, telegram_chat_id: int) -> Dict[str, str]:
     dsn = os.environ.get('DATABASE_URL')
     if not dsn:
@@ -2053,7 +2069,10 @@ def update_preview_field(preview_id: str, field: str, new_value: str, user_id: s
 def get_user_receipts_history(user_id: str, limit: int = 10) -> list:
     '''Get user's receipt history from database'''
     try:
-        conn = psycopg2.connect(dsn)
+        conn = get_db_connection()
+        if not conn:
+            print("[ERROR] No DB connection in get_user_receipts_history")
+            return []
         cur = conn.cursor()
         
         cur.execute("""
@@ -2093,7 +2112,10 @@ def get_user_receipts_history(user_id: str, limit: int = 10) -> list:
 def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]:
     '''Get receipt data by ID for repeat functionality'''
     try:
-        conn = psycopg2.connect(dsn)
+        conn = get_db_connection()
+        if not conn:
+            print("[ERROR] No DB connection in get_receipt_by_id")
+            return None
         cur = conn.cursor()
         
         cur.execute("""
@@ -2136,7 +2158,10 @@ def get_receipt_by_id(receipt_id: int, user_id: str) -> Optional[Dict[str, Any]]
 def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]:
     '''Get receipt data by UUID for repeat functionality'''
     try:
-        conn = psycopg2.connect(dsn)
+        conn = get_db_connection()
+        if not conn:
+            print("[ERROR] No DB connection in get_receipt_by_uuid")
+            return None
         cur = conn.cursor()
         
         cur.execute("""
@@ -2179,7 +2204,10 @@ def get_receipt_by_uuid(uuid_str: str, user_id: str) -> Optional[Dict[str, Any]]
 def save_last_successful_request(chat_id: int, preview_id: str, preview_data: Dict[str, Any]) -> None:
     '''Save last successful request for /repeat command'''
     try:
-        conn = psycopg2.connect(dsn)
+        conn = get_db_connection()
+        if not conn:
+            print("[ERROR] No DB connection in save_last_successful_request")
+            return
         cur = conn.cursor()
         
         # Store in database
