@@ -373,12 +373,68 @@ def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = Fal
     
     print(f"[DEBUG] Auto-detected document_type: {document_type} from message: {user_message[:50]}...")
     
+    # CRITICAL: Auto-detect payment provider from keywords
+    # Provider keywords mapping (partial match, case-insensitive)
+    provider_keywords = {
+        'сбербанк': ['сбербанк', 'sberbank', 'сбер'],
+        'юкасса': ['юкасса', 'юкасс', 'yookassa', 'юкаса'],
+        'тинькофф': ['тинькофф', 'тиньков', 'tinkoff', 'tcs'],
+        'альфа': ['альфа', 'alfa', 'альфабанк'],
+        'втб': ['втб', 'vtb'],
+        'райффайзен': ['райффайзен', 'raiffeisen'],
+        'газпромбанк': ['газпром', 'gazprom'],
+        'россельхозбанк': ['россельхоз', 'рсхб'],
+        'открытие': ['открытие', 'otkritie'],
+        'промсвязьбанк': ['промсвязь', 'psb']
+    }
+    
+    detected_provider_name = None
+    for provider_name, keywords in provider_keywords.items():
+        if any(kw in message_lower for kw in keywords):
+            detected_provider_name = provider_name
+            print(f"[DEBUG] Auto-detected payment provider: {provider_name}")
+            break
+    
+    # If provider detected and document_type is 'link', load user's providers and match
+    auto_selected_provider = None
+    if detected_provider_name and document_type == 'link':
+        user_providers = get_payment_providers(user_id)
+        if user_providers:
+            # Match detected provider name with user's available providers
+            for provider in user_providers:
+                provider_desc = provider.get('description', '').lower()
+                provider_id = provider.get('id')
+                
+                # Check if any keyword matches the provider description
+                for keyword in provider_keywords.get(detected_provider_name, []):
+                    if keyword in provider_desc:
+                        auto_selected_provider = {
+                            'id': provider_id,
+                            'name': provider.get('description', f'Провайдер {provider_id}'),
+                            'detected_keyword': detected_provider_name
+                        }
+                        print(f"[DEBUG] Matched provider: id={provider_id}, name={auto_selected_provider['name']}")
+                        break
+                
+                if auto_selected_provider:
+                    break
+            
+            # If provider keyword found but not available for user
+            if not auto_selected_provider:
+                print(f"[WARN] Provider '{detected_provider_name}' requested but not available for user {user_id}")
+        else:
+            print(f"[WARN] Could not load providers for user {user_id}")
+    
+    print(f"[DEBUG] auto_selected_provider: {auto_selected_provider}")
+    
     payload = {
         'message': user_message,
         'operation_type': 'Приход',
         'preview_only': preview_only,
         'external_id': f"TG_{int(datetime.now().timestamp())}",
         'document_type': document_type,  # CRITICAL: Pass document type to backend
+        'auto_selected_provider': auto_selected_provider,  # CRITICAL: Auto-selected payment provider
+        'detected_provider_keyword': detected_provider_name,  # CRITICAL: Keyword that was detected (even if not available)
         'settings': {}
     }
     

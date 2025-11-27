@@ -343,12 +343,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     operation_type: str = body_data.get('operation_type', '')
     preview_only: bool = body_data.get('preview_only', False)
     document_type: str = body_data.get('document_type', 'receipt')  # CRITICAL: 'receipt' or 'link'
+    auto_selected_provider: dict = body_data.get('auto_selected_provider')  # CRITICAL: Auto-detected provider
+    detected_provider_keyword: str = body_data.get('detected_provider_keyword', '')  # Keyword found in text
     settings: dict = body_data.get('settings', {})
     previous_receipt: dict = body_data.get('previous_receipt', {})
     edited_data: dict = body_data.get('edited_data')
     context_message: str = body_data.get('context_message', '')
     
     print(f"[DEBUG] document_type: {document_type}, preview_only: {preview_only}")
+    print(f"[DEBUG] auto_selected_provider: {auto_selected_provider}, detected_keyword: {detected_provider_keyword}")
     
     # Load user settings from database if user_id is provided
     if user_id:
@@ -731,6 +734,55 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     parsed_receipt['items'][0]['price'] = total_from_payments / parsed_receipt['items'][0].get('quantity', 1)
                     print(f"[DEBUG] Updated single item price to {parsed_receipt['items'][0]['price']}")
             parsed_receipt['total'] = total_from_payments
+    
+    # CRITICAL: Auto-apply payment provider if detected from keywords
+    if auto_selected_provider and document_type == 'link':
+        provider_id = auto_selected_provider.get('id')
+        provider_name = auto_selected_provider.get('name', f'Провайдер {provider_id}')
+        
+        # Clean provider name
+        provider_name = provider_name.replace('Платёж через счёт ', '')
+        provider_name = provider_name.replace('Платёж через эквайринг ', '')
+        provider_name = provider_name.replace('Платёж через ', '')
+        provider_name = provider_name.replace('"', '')
+        
+        # Set payment provider in receipt_data
+        parsed_receipt['payment_link_enabled'] = True
+        parsed_receipt['payment_provider_id'] = int(provider_id)
+        parsed_receipt['payment_provider_name'] = provider_name
+        parsed_receipt['operation_type'] = 'sell'  # Always Продажа for payment link
+        
+        # Set provider ID as payment type
+        if 'payments' in parsed_receipt and len(parsed_receipt['payments']) > 0:
+            parsed_receipt['payments'][0]['type'] = int(provider_id)
+            print(f"[DEBUG] Auto-applied payment provider: id={provider_id}, name={provider_name}")
+    
+    # CRITICAL: If provider keyword detected but provider not available, show error
+    elif detected_provider_keyword and document_type == 'link' and not auto_selected_provider:
+        provider_name_ru = {
+            'сбербанк': 'Сбербанк',
+            'юкасса': 'ЮКасса',
+            'тинькофф': 'Тинькофф',
+            'альфа': 'Альфа-Банк',
+            'втб': 'ВТБ',
+            'райффайзен': 'Райффайзен',
+            'газпромбанк': 'Газпромбанк',
+            'россельхозбанк': 'Россельхозбанк',
+            'открытие': 'Открытие',
+            'промсвязьбанк': 'Промсвязьбанк'
+        }.get(detected_provider_keyword, detected_provider_keyword.capitalize())
+        
+        return {
+            'statusCode': 400,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({
+                'success': False,
+                'error': f'⚠️ Провайдер "{provider_name_ru}" не подключен.\n\nПодключи {provider_name_ru} в ЕкомКасса:\n🔗 https://app.ecomkassa.ru/admin/integrations\n\nПосле подключения создай чек заново.'
+            })
+        }
     
     if preview_only:
         return {
