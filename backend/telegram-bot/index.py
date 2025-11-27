@@ -801,7 +801,10 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             payment_link = receipt_result.get('payment_link', '')
             qr_code = receipt_result.get('qr_code', '')
             
-            if payment_link:
+            # Check if payment_link_enabled in receipt_data (edited data from preview)
+            is_payment_link = bool(payment_link) or receipt_data.get('payment_link_enabled', False)
+            
+            if is_payment_link:
                 response_text = "✅ Платежная ссылка создана!\n\n"
             else:
                 response_text = "✅ Чек создан и отправлен!\n\n"
