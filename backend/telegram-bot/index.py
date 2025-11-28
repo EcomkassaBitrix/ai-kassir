@@ -114,18 +114,24 @@ def get_user_id_for_telegram(telegram_lookup_id: str) -> Optional[str]:
 
 def save_receipt_to_db(user_id: str, receipt_data: Dict[str, Any], telegram_chat_id: int, telegram_message_id: int) -> int:
     """Save receipt to database and return receipt ID"""
+    import uuid
     row = execute_query("""
-        INSERT INTO receipts (user_id, items, total, payment_type, status, telegram_chat_id, telegram_message_id, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO receipts (
+            user_id, uuid, items, total, payment_type, status, 
+            operation_type, demo_mode, created_at, updated_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
     """, (
         user_id,
+        str(uuid.uuid4()),
         psycopg2.extras.Json(receipt_data['items']),
         receipt_data['total'],
         receipt_data.get('payment_type', 'card'),
-        'success',
-        telegram_chat_id,
-        telegram_message_id,
+        'pending',
+        'income',
+        False,
+        datetime.now(),
         datetime.now()
     ), fetch_one=True, commit=True)
     return row[0]
@@ -134,7 +140,7 @@ def save_receipt_to_db(user_id: str, receipt_data: Dict[str, Any], telegram_chat
 def get_receipt_by_uuid(uuid: str, user_id: str) -> Optional[Dict[str, Any]]:
     """Get receipt by short UUID prefix"""
     row = execute_query("""
-        SELECT id, items, total, payment_type, status, telegram_chat_id, telegram_message_id, created_at
+        SELECT id, items, total, payment_type, status, created_at
         FROM receipts 
         WHERE id::text LIKE %s AND user_id = %s
         ORDER BY created_at DESC
@@ -145,14 +151,14 @@ def get_receipt_by_uuid(uuid: str, user_id: str) -> Optional[Dict[str, Any]]:
         return None
     return {
         'id': row[0], 'items': row[1], 'total': row[2], 'payment_type': row[3],
-        'status': row[4], 'telegram_chat_id': row[5], 'telegram_message_id': row[6], 'created_at': row[7]
+        'status': row[4], 'created_at': row[5]
     }
 
 
 def get_last_receipt(user_id: str) -> Optional[Dict[str, Any]]:
     """Get last receipt for user"""
     row = execute_query("""
-        SELECT id, items, total, payment_type, status, telegram_chat_id, telegram_message_id, created_at
+        SELECT id, items, total, payment_type, status, created_at
         FROM receipts WHERE user_id = %s ORDER BY created_at DESC LIMIT 1
     """, (user_id,), fetch_one=True)
     
@@ -160,7 +166,7 @@ def get_last_receipt(user_id: str) -> Optional[Dict[str, Any]]:
         return None
     return {
         'id': row[0], 'items': row[1], 'total': row[2], 'payment_type': row[3],
-        'status': row[4], 'telegram_chat_id': row[5], 'telegram_message_id': row[6], 'created_at': row[7]
+        'status': row[4], 'created_at': row[5]
     }
 
 
