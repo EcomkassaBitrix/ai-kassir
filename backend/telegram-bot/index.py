@@ -689,9 +689,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             if editing_preview_id:
                 text = message.get('text', '')
+                print(f"[INFO] Group message in editing mode, sender {sender_id}, text: {text}")
             else:
                 text_raw = message.get('text', '')
                 bot_mentioned = '@ecomkassa_ai_bot' in text_raw.lower() or message.get('reply_to_message', {}).get('from', {}).get('is_bot', False)
+                print(f"[INFO] Group message, sender {sender_id}, mentioned: {bot_mentioned}, text: {text_raw[:50] if text_raw else 'empty'}")
                 if not bot_mentioned:
                     return create_response({'ok': True})
                 text = text_raw.replace('@ecomkassa_ai_bot', '').replace('@Ecomkassa_ai_bot', '').strip()
