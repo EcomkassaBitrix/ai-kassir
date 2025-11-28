@@ -33,10 +33,12 @@ def get_ai_completion(user_text: str, settings: dict, context: str = '') -> Opti
 КРИТИЧНО про название товара/услуги (name):
 - Название товара - это конкретный товар или услуга, которую продаешь
 - Примеры: "мебель на заказ за 1300₽" → name: "мебель на заказ"
-- Примеры: "Я продаю стрижку и укладку за 2000" → name: "стрижка и укладка"
+- Примеры: "Я продаю стрижку и укладку за 2000" → name: "стрижка и укладку"
 - Примеры: "кофе американо 200₽" → name: "кофе американо"
 - НЕ включай в название: цену, способ оплаты, email, телефон
 - ВАЖНО: Слова "платежная ссылка", "ссылка на оплату", "QR", "эквайринг" - это НЕ товар, а способ оплаты!
+- **ЗАПРЕЩЕННЫЕ** слова для name (ВСЕГДА возвращай error если их используют): "чек", "товар", "услуга", "создай", "сделай", "отправь", "пробей"
+- Если в запросе есть только запрещенные слова + цена - верни error: "Что продаёшь за X₽? Укажи название товара/услуги. Пример: кофе X₽"
 - Если в запросе только "платежная ссылка" без товара - верни error: "Укажи товар/услугу для платежной ссылки. Пример: консультация 5000₽ ссылка сбербанк"
 
 Пользователь указывает данные из массивов:
@@ -112,21 +114,21 @@ client: email (проверь формат), phone (+7...), МОЖНО null ес
 Часть данных подставит бэкэнд (group_code, inn, sno, default_vat, company_email, payment_address), так как он связан с настройками который вводит пользователя.
 
 Успешный формат (простая оплата):
-{{"operation_type":"sell","items":[{{"name":"Товар","price":100,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":"user@mail.ru","phone":null}},"payments":[{{"type":"1","sum":100}}]}}
+{{"operation_type":"sell","items":[{{"name":"кофе","price":100,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":"user@mail.ru","phone":null}},"payments":[{{"type":"1","sum":100}}]}}
 
 Формат БЕЗ ПОЧТЫ (бэкэнд подставит дефолтный email):
-{{"operation_type":"sell","items":[{{"name":"Товар","price":100,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":100}}]}}
+{{"operation_type":"sell","items":[{{"name":"хлеб","price":100,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":100}}]}}
 
 Если НЕ ХВАТАЕТ ДАННЫХ - ОБЯЗАТЕЛЬНО верни error с детальным объяснением:
 {{"error":"Не хватает данных для чека: укажи цену товара/услуги. Email можно не указывать (будет использован дефолтный). Пример: изготовление шкафа 25000₽"}}
 
 Примеры запросов:
 - "кофе 200₽ без почты" → {{"operation_type":"sell","items":[{{"name":"кофе","price":200,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":200}}]}}
-- "психолог 27 рубля без почты" → {{"operation_type":"sell","items":[{{"name":"психолог","price":27,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":27}}]}}
-- "услуга 1500₽ не отправлять чек" → {{"operation_type":"sell","items":[{{"name":"услуга","price":1500,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":1500}}]}}
+- "консультация психолога 27 рублей без почты" → {{"operation_type":"sell","items":[{{"name":"консультация психолога","price":27,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":27}}]}}
+- "массаж 1500₽ не отправлять чек" → {{"operation_type":"sell","items":[{{"name":"массаж","price":1500,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":1500}}]}}
 - "консультация юриста 3000₽" → {{"operation_type":"sell","items":[{{"name":"консультация юриста","price":3000,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":3000}}]}}
 - "Я продаю мебель на заказ за 1300.12 в кредит первоначальный взнос 500" → {{"operation_type":"sell","items":[{{"name":"мебель на заказ","price":1300.12,"quantity":1,"measure":"шт","vat":"none","payment_method":"partial_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":500}},{{"type":"3","sum":800.12}}]}}
-- "товар 1000₽, 600 наличными остальное картой" → {{"operation_type":"sell","items":[{{"name":"товар","price":1000,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"0","sum":600}},{{"type":"1","sum":400}}]}}
+- "ноутбук 1000₽, 600 наличными остальное картой" → {{"operation_type":"sell","items":[{{"name":"ноутбук","price":1000,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"0","sum":600}},{{"type":"1","sum":400}}]}}
 - "стрижка и укладка 2500₽" → {{"operation_type":"sell","items":[{{"name":"стрижка и укладка","price":2500,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":2500}}]}}
 - "кофе 10 руб ссылка точка" → {{"operation_type":"sell","items":[{{"name":"кофе","price":10,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":10}}]}}
 - "кофе 10 руб ссылка точка СБП" → {{"operation_type":"sell","items":[{{"name":"кофе","price":10,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":10}}]}}
@@ -134,6 +136,7 @@ client: email (проверь формат), phone (+7...), МОЖНО null ес
 - "кофе" → {{"error":"Укажи цену. Email необязателен (будет дефолтный). Пример: кофе 200₽"}}
 - "стрижка test@mail.ru" → {{"error":"Укажи цену услуги. Пример: стрижка 1500₽ test@mail.ru"}}
 - "изготовление шкафа" → {{"error":"Укажи цену. Пример: изготовление шкафа 25000₽"}}
+- "сделай чек 10 руб без почты" → {{"error":"Что продаёшь за 10₽? Укажи название товара/услуги. Пример: кофе 10₽ без почты"}}
 - "создай чек 50 без почты" → {{"error":"Что продаёшь за 50₽? Укажи название товара/услуги. Пример: кофе 50₽ без почты"}}
 - "чек на 100₽" → {{"error":"Что продаёшь за 100₽? Укажи товар или услугу. Пример: консультация 100₽"}}
 - "50 рублей без email" → {{"error":"Укажи название товара/услуги. Что продаёшь за 50₽? Пример: обед 50₽"}}
