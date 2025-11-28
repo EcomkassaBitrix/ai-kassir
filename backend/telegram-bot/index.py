@@ -2,7 +2,10 @@ import json
 import os
 import urllib.request
 import urllib.parse
+import urllib.error
 import psycopg2
+import io
+import base64
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -291,8 +294,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         send_telegram_message(bot_token, chat_id, "❌ Ошибка при сохранении. Попробуй снова.")
                         return create_response({'ok': True})
         
-        # Get preview of the receipt (pass chat_id for context management)
-        preview_result = process_receipt_ai(text, user_id, preview_only=True, chat_id=chat_id)
+        # Get preview of the receipt by calling process-receipt backend
+        preview_result = call_process_receipt_backend(text, user_id, chat_id)
         print(f"[DEBUG] preview_result: {preview_result.get('success')}, preview: {preview_result.get('preview')}")
         
         # Clean up any old editing states for this chat when creating new preview
@@ -634,7 +637,12 @@ def send_photo_base64(bot_token: str, chat_id: int, photo_data_url: str, caption
         print(f"[ERROR] Failed to send photo from base64: {e}")
 
 
-def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = False, chat_id: int = None) -> Dict[str, Any]:
+def call_process_receipt_backend(user_message: str, user_id: str, chat_id: int = None) -> Dict[str, Any]:
+    '''
+    Call process-receipt backend API to create receipt or payment link
+    Handles document type detection, provider detection, and context management
+    Returns: dict with preview/success/error from backend
+    '''
     process_receipt_url = 'https://functions.poehali.dev/734da785-2867-4c5d-b20c-90fc6d86b11c'
     
     # CRITICAL: Get context from previous incomplete request (if exists)
@@ -771,7 +779,7 @@ def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = Fal
     payload = {
         'message': user_message,
         'operation_type': 'Приход',
-        'preview_only': preview_only,
+        'preview_only': True,  # Always get preview first in Telegram
         'external_id': f"TG_{int(datetime.now().timestamp())}",
         'document_type': document_type,  # CRITICAL: Pass document type to backend
         'auto_selected_provider': auto_selected_provider,  # CRITICAL: Auto-selected payment provider
@@ -834,6 +842,47 @@ def process_receipt_ai(user_message: str, user_id: str, preview_only: bool = Fal
             'success': False,
             'error': f'Ошибка AI: {str(e)}'
         }
+
+
+def call_process_receipt_for_confirm(user_message: str, user_id: str) -> Dict[str, Any]:
+    '''
+    Call process-receipt backend API to send receipt to ecomkassa (NOT preview)
+    '''
+    process_receipt_url = 'https://functions.poehali.dev/734da785-2867-4c5d-b20c-90fc6d86b11c'
+    
+    payload = {
+        'message': user_message,
+        'operation_type': 'sell',
+        'preview_only': False,  # Send to Ecomkassa
+        'document_type': 'receipt',  # Default, will be detected by backend
+        'settings': {}
+    }
+    
+    try:
+        req = urllib.request.Request(
+            process_receipt_url,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'X-User-Id': user_id
+            }
+        )
+        
+        with urllib.request.urlopen(req, timeout=60) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            return result
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        try:
+            error_json = json.loads(error_body)
+            return {
+                'success': False,
+                'error': error_json.get('error') or error_json.get('message', f'HTTP {e.code}')
+            }
+        except json.JSONDecodeError:
+            return {'success': False, 'error': f'HTTP {e.code}'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
 
 
 def process_receipt_ai_with_edited_data(receipt_data: dict, user_id: str) -> Dict[str, Any]:
@@ -1059,8 +1108,8 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             receipt_result = process_receipt_ai_with_edited_data(receipt_data, user_id)
         else:
             print(f"[DEBUG] No receipt_data in preview, parsing from text")
-            # Fallback: parse from original message
-            receipt_result = process_receipt_ai(user_message, user_id, preview_only=False)
+            # Fallback: parse from original message and send to ecomkassa
+            receipt_result = call_process_receipt_for_confirm(user_message, user_id)
         
         if receipt_result.get('success'):
             receipt_data = receipt_result.get('receipt', {})
