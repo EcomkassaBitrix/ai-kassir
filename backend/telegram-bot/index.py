@@ -807,23 +807,25 @@ def call_process_receipt_backend(user_message: str, user_id: str, chat_id: int =
             # CRITICAL: Save context for next request if AI asks for more info
             # If result contains error asking for more data, save current message as context
             if chat_id and result.get('error') and not result.get('success'):
-                error_msg = result.get('error', '').lower()
+                error_msg = result.get('error', '').lower().replace('ё', 'е')  # Normalize ё to е for reliable matching
                 # Check if AI is asking for product name, price, or other missing data
                 # CRITICAL: Expanded keywords to catch all AI prompts for missing data
+                # NOTE: Use 'е' instead of 'ё' because error_msg is normalized
                 context_keywords = [
-                    'что продаёшь', 'укажи', 'не хватает', 'название', 
+                    'что продаеш', 'укажи', 'не хватает', 'название', 
                     'товар', 'услуг', 'цен', 'email', 'почт',
                     'what are you selling', 'specify', 'missing', 'name'
                 ]
                 if any(keyword in error_msg for keyword in context_keywords):
-                    print(f"[DEBUG] AI asking for more info (found keyword in error) - saving context: '{user_message}'")
+                    print(f"[DEBUG] AI asking for more info (found keyword in error: '{error_msg[:50]}...') - saving context: '{user_message}'")
                     save_context_for_chat(chat_id, user_message)
                 else:
                     # Clear context if error is not about missing data
-                    print(f"[DEBUG] Error not about missing data, clearing context")
+                    print(f"[DEBUG] Error not about missing data (error: '{error_msg[:50]}...'), clearing context")
                     clear_context_for_chat(chat_id)
             elif chat_id and result.get('success'):
                 # Clear context on successful receipt creation
+                print(f"[DEBUG] Receipt created successfully, clearing context")
                 clear_context_for_chat(chat_id)
             
             return result
