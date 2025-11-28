@@ -651,12 +651,29 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'statusCode': 200,
             'headers': {
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type',
                 'Access-Control-Max-Age': '86400'
             },
             'body': ''
         }
+    
+    # GET endpoint to setup webhook
+    if method == 'GET':
+        bot_token = get_bot_token()
+        if not bot_token:
+            return create_response({'error': 'Bot token not configured'}, 500)
+        
+        webhook_url = 'https://functions.poehali.dev/c931c0bd-bad6-4f16-9a76-f67296c311b1'
+        telegram_api_url = f'https://api.telegram.org/bot{bot_token}/setWebhook?url={webhook_url}'
+        
+        try:
+            req = urllib.request.Request(telegram_api_url, method='POST')
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode())
+                return create_response({'success': True, 'webhook_set': result}, 200)
+        except Exception as e:
+            return create_response({'error': f'Failed to set webhook: {str(e)}'}, 500)
     
     if method != 'POST':
         return create_response({'error': 'Method not allowed'}, 405)
