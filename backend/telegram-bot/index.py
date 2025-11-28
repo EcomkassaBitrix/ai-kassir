@@ -18,12 +18,10 @@ from datetime import datetime
 def get_bot_token() -> Optional[str]:
     """Get Telegram bot token from database"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT setting_value FROM bot_settings WHERE setting_key = 'telegram_bot_token'")
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
+        row = execute_query(
+            "SELECT setting_value FROM bot_settings WHERE setting_key = 'telegram_bot_token'",
+            fetch_one=True
+        )
         return row[0] if row else None
     except Exception as e:
         print(f"[ERROR] Failed to get bot token: {e}")
@@ -36,19 +34,45 @@ def get_openai_key() -> Optional[str]:
 
 
 def get_db_connection():
-    """Get PostgreSQL database connection"""
+    """Get PostgreSQL database connection with schema prefix"""
     dsn = os.environ.get('DATABASE_URL')
     if not dsn:
         raise ValueError("DATABASE_URL not configured")
-    
-    # Add schema to connection options
-    if '?' in dsn:
-        dsn += '&options=-c%20search_path=t_p7891941_voice_ai_agent_1,public'
-    else:
-        dsn += '?options=-c%20search_path=t_p7891941_voice_ai_agent_1,public'
-    
     conn = psycopg2.connect(dsn)
     return conn
+
+
+def execute_query(query: str, params=None, fetch_one=False, fetch_all=False, commit=False):
+    """Execute query with automatic schema prefix handling"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Add schema prefix to table names if not already present
+    tables_to_prefix = ['bot_settings', 'telegram_users', 'receipts', 'editing_previews', 
+                        'conversation_contexts', 'telegram_link_codes', 'chat_contexts']
+    modified_query = query
+    for table in tables_to_prefix:
+        if table in modified_query and f't_p7891941_voice_ai_agent_1.{table}' not in modified_query:
+            modified_query = modified_query.replace(f' {table} ', f' t_p7891941_voice_ai_agent_1.{table} ')
+            modified_query = modified_query.replace(f' {table}(', f' t_p7891941_voice_ai_agent_1.{table}(')
+            modified_query = modified_query.replace(f'FROM {table}', f'FROM t_p7891941_voice_ai_agent_1.{table}')
+            modified_query = modified_query.replace(f'INTO {table}', f'INTO t_p7891941_voice_ai_agent_1.{table}')
+            modified_query = modified_query.replace(f'UPDATE {table}', f'UPDATE t_p7891941_voice_ai_agent_1.{table}')
+    
+    cur.execute(modified_query, params)
+    
+    result = None
+    if fetch_one:
+        result = cur.fetchone()
+    elif fetch_all:
+        result = cur.fetchall()
+    
+    if commit:
+        conn.commit()
+    
+    cur.close()
+    conn.close()
+    return result
 
 
 # ============================================================================
@@ -57,20 +81,17 @@ def get_db_connection():
 
 def get_user_id_for_telegram(telegram_lookup_id: str) -> Optional[str]:
     """Get user_id by telegram lookup ID"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT user_id FROM telegram_users WHERE telegram_lookup_id = %s", (telegram_lookup_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
+    row = execute_query(
+        "SELECT user_id FROM telegram_users WHERE telegram_lookup_id = %s",
+        (telegram_lookup_id,),
+        fetch_one=True
+    )
     return row[0] if row else None
 
 
 def save_receipt_to_db(user_id: str, receipt_data: Dict[str, Any], telegram_chat_id: int, telegram_message_id: int) -> int:
     """Save receipt to database and return receipt ID"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
+    row = execute_query("""
         INSERT INTO receipts (user_id, items, total, payment_type, status, telegram_chat_id, telegram_message_id, created_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
@@ -83,28 +104,19 @@ def save_receipt_to_db(user_id: str, receipt_data: Dict[str, Any], telegram_chat
         telegram_chat_id,
         telegram_message_id,
         datetime.now()
-    ))
-    receipt_id = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
-    return receipt_id
+    ), fetch_one=True, commit=True)
+    return row[0]
 
 
 def get_receipt_by_uuid(uuid: str, user_id: str) -> Optional[Dict[str, Any]]:
     """Get receipt by short UUID prefix"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
+    row = execute_query("""
         SELECT id, items, total, payment_type, status, telegram_chat_id, telegram_message_id, created_at
         FROM receipts 
         WHERE id::text LIKE %s AND user_id = %s
         ORDER BY created_at DESC
         LIMIT 1
-    """, (f"{uuid}%", user_id))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
+    """, (f"{uuid}%", user_id), fetch_one=True)
     
     if not row:
         return None
@@ -116,15 +128,10 @@ def get_receipt_by_uuid(uuid: str, user_id: str) -> Optional[Dict[str, Any]]:
 
 def get_last_receipt(user_id: str) -> Optional[Dict[str, Any]]:
     """Get last receipt for user"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
+    row = execute_query("""
         SELECT id, items, total, payment_type, status, telegram_chat_id, telegram_message_id, created_at
         FROM receipts WHERE user_id = %s ORDER BY created_at DESC LIMIT 1
-    """, (user_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
+    """, (user_id,), fetch_one=True)
     
     if not row:
         return None
@@ -136,45 +143,30 @@ def get_last_receipt(user_id: str) -> Optional[Dict[str, Any]]:
 
 def get_user_receipts_history(user_id: str, limit: int = 10) -> List[Dict[str, Any]]:
     """Get user receipts history"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
+    rows = execute_query("""
         SELECT id, items, total, status, created_at
         FROM receipts WHERE user_id = %s ORDER BY created_at DESC LIMIT %s
-    """, (user_id, limit))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
+    """, (user_id, limit), fetch_all=True)
     
     return [{'id': r[0], 'items': r[1], 'total': r[2], 'status': r[3], 'created_at': r[4]} for r in rows]
 
 
 def save_editing_preview(chat_id: int, preview_data: Dict[str, Any], message_id: int, field_to_edit: str) -> None:
     """Save editing preview state"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
+    execute_query("""
         INSERT INTO editing_previews (chat_id, preview_data, message_id, field_to_edit, created_at)
         VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT (chat_id) DO UPDATE SET preview_data = EXCLUDED.preview_data,
             message_id = EXCLUDED.message_id, field_to_edit = EXCLUDED.field_to_edit, created_at = EXCLUDED.created_at
-    """, (chat_id, psycopg2.extras.Json(preview_data), message_id, field_to_edit, datetime.now()))
-    conn.commit()
-    cur.close()
-    conn.close()
+    """, (chat_id, psycopg2.extras.Json(preview_data), message_id, field_to_edit, datetime.now()), commit=True)
 
 
 def find_editing_preview_for_chat(chat_id: int) -> Optional[Dict[str, Any]]:
     """Find active editing preview for chat"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
+    row = execute_query("""
         SELECT preview_data, message_id, field_to_edit
         FROM editing_previews WHERE chat_id = %s ORDER BY created_at DESC LIMIT 1
-    """, (chat_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
+    """, (chat_id,), fetch_one=True)
     
     if not row:
         return None
@@ -183,47 +175,27 @@ def find_editing_preview_for_chat(chat_id: int) -> Optional[Dict[str, Any]]:
 
 def clear_editing_preview(chat_id: int) -> None:
     """Clear editing preview state"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM editing_previews WHERE chat_id = %s", (chat_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
+    execute_query("DELETE FROM editing_previews WHERE chat_id = %s", (chat_id,), commit=True)
 
 
 def save_context_for_chat(chat_id: int, context_data: Dict[str, Any]) -> None:
     """Save conversation context"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
+    execute_query("""
         INSERT INTO conversation_contexts (chat_id, context_data, updated_at)
         VALUES (%s, %s, %s) ON CONFLICT (chat_id)
         DO UPDATE SET context_data = EXCLUDED.context_data, updated_at = EXCLUDED.updated_at
-    """, (chat_id, psycopg2.extras.Json(context_data), datetime.now()))
-    conn.commit()
-    cur.close()
-    conn.close()
+    """, (chat_id, psycopg2.extras.Json(context_data), datetime.now()), commit=True)
 
 
 def get_context_for_chat(chat_id: int) -> Optional[Dict[str, Any]]:
     """Get conversation context"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT context_data FROM conversation_contexts WHERE chat_id = %s", (chat_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
+    row = execute_query("SELECT context_data FROM conversation_contexts WHERE chat_id = %s", (chat_id,), fetch_one=True)
     return row[0] if row else None
 
 
 def clear_context_for_chat(chat_id: int) -> None:
     """Clear conversation context"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM conversation_contexts WHERE chat_id = %s", (chat_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
+    execute_query("DELETE FROM conversation_contexts WHERE chat_id = %s", (chat_id,), commit=True)
 
 
 # ============================================================================
@@ -564,22 +536,15 @@ def handle_start_command(text: str, chat_id: int, bot_token: str, lookup_id: str
     link_code = text.replace('/start', '').strip()
     
     if link_code and link_code.startswith('LINK-'):
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT user_id FROM telegram_link_codes WHERE code = %s AND used = false", (link_code,))
-        row = cur.fetchone()
+        row = execute_query("SELECT user_id FROM telegram_link_codes WHERE code = %s AND used = false", (link_code,), fetch_one=True)
         
         if row:
             user_id = row[0]
-            cur.execute("INSERT INTO telegram_users (telegram_lookup_id, user_id) VALUES (%s, %s) ON CONFLICT (telegram_lookup_id) DO UPDATE SET user_id = EXCLUDED.user_id", (lookup_id, user_id))
-            cur.execute("UPDATE telegram_link_codes SET used = true WHERE code = %s", (link_code,))
-            conn.commit()
+            execute_query("INSERT INTO telegram_users (telegram_lookup_id, user_id) VALUES (%s, %s) ON CONFLICT (telegram_lookup_id) DO UPDATE SET user_id = EXCLUDED.user_id", (lookup_id, user_id), commit=True)
+            execute_query("UPDATE telegram_link_codes SET used = true WHERE code = %s", (link_code,), commit=True)
             send_telegram_message(bot_token, chat_id, "✅ Telegram успешно привязан к аккаунту!")
         else:
             send_telegram_message(bot_token, chat_id, "❌ Неверный или использованный код привязки")
-        
-        cur.close()
-        conn.close()
         return
     
     response_text = (
