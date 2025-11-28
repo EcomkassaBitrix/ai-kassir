@@ -1907,9 +1907,51 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         return handle_callback_query(callback_query, bot_token)
     
     elif callback_data.startswith('set_payment_object_'):
-        parts = callback_data.replace('set_payment_object_', '').split('_')
-        payment_object = parts[0]
-        preview_id = '_'.join(parts[1:])
+        # Extract payment_object and preview_id properly
+        # Format: set_payment_object_{payment_object}_{preview_id}
+        # payment_object can contain underscores (e.g., intellectual_property)
+        remaining = callback_data.replace('set_payment_object_', '')
+        
+        # Known payment_object values with underscores
+        known_objects = [
+            'intellectual_property',
+            'property_right',
+            'non_operating_income',
+            'insurance_premium',
+            'sales_tax',
+            'resort_fee',
+            'pension_insurance_ip',
+            'pension_insurance',
+            'medical_insurance_ip',
+            'medical_insurance',
+            'social_insurance',
+            'casino_payment',
+            'agent_payment',
+            'excisable_goods_without_marking',
+            'excisable_goods_with_marking',
+            'goods_without_marking',
+            'goods_with_marking',
+            'payment_gambling',
+            'gambling_prize',
+            'lottery_prize',
+            'agent_commission'
+        ]
+        
+        payment_object = None
+        preview_id = None
+        
+        # Try to match known multi-word objects first
+        for obj in known_objects:
+            if remaining.startswith(obj + '_'):
+                payment_object = obj
+                preview_id = remaining[len(obj) + 1:]  # +1 for underscore
+                break
+        
+        # If no match, assume single-word object (commodity, service, excise, job, advance, composite, another, lottery, deposit, expense)
+        if not payment_object:
+            parts = remaining.split('_', 1)
+            payment_object = parts[0]
+            preview_id = parts[1] if len(parts) > 1 else ''
         
         update_preview_field_value(preview_id, 'payment_object', payment_object)
         
@@ -1933,11 +1975,34 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         return handle_callback_query(callback_query, bot_token)
     
     elif callback_data.startswith('set_payment_method_'):
-        parts = callback_data.replace('set_payment_method_', '').split('_')
-        payment_method = '_'.join(parts[:-1]) if len(parts) > 1 else parts[0]
-        # Extract preview_id which is the last part after splitting by '_'
-        preview_id_parts = callback_data.split('_')
-        preview_id = preview_id_parts[-1]
+        # Extract payment_method and preview_id properly
+        # Format: set_payment_method_{payment_method}_{preview_id}
+        # payment_method can contain underscores (e.g., full_prepayment, partial_payment)
+        remaining = callback_data.replace('set_payment_method_', '')
+        
+        # Known payment_method values with underscores
+        known_methods = [
+            'full_prepayment',
+            'full_payment',
+            'partial_payment',
+            'credit_payment'
+        ]
+        
+        payment_method = None
+        preview_id = None
+        
+        # Try to match known multi-word methods first
+        for method in known_methods:
+            if remaining.startswith(method + '_'):
+                payment_method = method
+                preview_id = remaining[len(method) + 1:]  # +1 for underscore
+                break
+        
+        # If no match, assume single-word method (prepayment, advance, credit)
+        if not payment_method:
+            parts = remaining.split('_', 1)
+            payment_method = parts[0]
+            preview_id = parts[1] if len(parts) > 1 else ''
         
         update_preview_field_value(preview_id, 'payment_method', payment_method)
         
