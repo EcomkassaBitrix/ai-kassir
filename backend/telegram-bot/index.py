@@ -62,19 +62,27 @@ def execute_query(query: str, params=None, fetch_one=False, fetch_all=False, com
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Add schema prefix to table names if not already present
+    # Add schema prefix to table names - use simple full replacement
+    schema = 't_p7891941_voice_ai_agent_1'
     tables_to_prefix = ['bot_settings', 'telegram_users', 'receipts', 'editing_previews', 
                         'chat_contexts', 'telegram_link_codes', 'ai_settings']
     modified_query = query
-    for table in tables_to_prefix:
-        if table in modified_query and f't_p7891941_voice_ai_agent_1.{table}' not in modified_query:
-            modified_query = modified_query.replace(f' {table} ', f' t_p7891941_voice_ai_agent_1.{table} ')
-            modified_query = modified_query.replace(f' {table}(', f' t_p7891941_voice_ai_agent_1.{table}(')
-            modified_query = modified_query.replace(f'FROM {table}', f'FROM t_p7891941_voice_ai_agent_1.{table}')
-            modified_query = modified_query.replace(f'INTO {table}', f'INTO t_p7891941_voice_ai_agent_1.{table}')
-            modified_query = modified_query.replace(f'UPDATE {table}', f'UPDATE t_p7891941_voice_ai_agent_1.{table}')
     
-    cur.execute(modified_query, params)
+    for table in tables_to_prefix:
+        # Only replace if schema prefix not already present
+        if table in modified_query and f'{schema}.{table}' not in modified_query:
+            # Replace all occurrences with schema prefix
+            import re
+            # Match table name with word boundaries
+            pattern = r'\b' + table + r'\b'
+            modified_query = re.sub(pattern, f'{schema}.{table}', modified_query)
+    
+    try:
+        cur.execute(modified_query, params)
+    except Exception as e:
+        print(f"[ERROR] Query failed: {str(e)[:200]}")
+        print(f"[ERROR] Query was: {modified_query[:300]}")
+        raise
     
     result = None
     if fetch_one:
