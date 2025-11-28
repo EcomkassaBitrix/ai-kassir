@@ -667,11 +667,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     try:
         update = json.loads(event.get('body', '{}'))
+        print(f"[INFO] Received update: {json.dumps(update)[:200]}")
         
         if 'callback_query' in update:
+            print(f"[INFO] Processing callback query")
             return handle_callback_query(update['callback_query'], bot_token)
         
         if 'message' not in update:
+            print(f"[INFO] No message in update, ignoring")
             return create_response({'ok': True})
         
         message = update['message']
