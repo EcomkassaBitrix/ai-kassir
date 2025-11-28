@@ -1479,7 +1479,7 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             if payment_link_enabled and provider_name:
                 group_text = f"📄 <b>Тип документа</b>\n\n✅ Сейчас: <b>Платежная ссылка</b>\nПровайдер: <b>{provider_name}</b>\n\nВыбери параметр:"
                 group_buttons = [
-                    [{"text": "🧾 Переключить на обычный чек", "callback_data": f"set_document_receipt_{preview_id}"}],
+                    [{"text": "🧾 Чек", "callback_data": f"set_document_receipt_{preview_id}"}],
                     [{"text": "🔗 Изменить провайдера", "callback_data": f"edit_payment_link_{preview_id}"}],
                     [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
                 ]
