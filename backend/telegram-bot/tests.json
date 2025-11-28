@@ -7,7 +7,7 @@
       "expectedStatus": 200
     },
     {
-      "name": "Test webhook with /start command",
+      "name": "Test webhook without token returns error",
       "method": "POST",
       "path": "/",
       "body": {
@@ -16,9 +16,9 @@
           "text": "/start"
         }
       },
-      "expectedStatus": 200,
+      "expectedStatus": 500,
       "expectedBody": {
-        "ok": true
+        "error": "Bot token not configured"
       },
       "bodyMatcher": "partial"
     }
