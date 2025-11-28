@@ -16,8 +16,18 @@ from datetime import datetime
 # ============================================================================
 
 def get_bot_token() -> Optional[str]:
-    """Get Telegram bot token from environment"""
-    return os.environ.get('TELEGRAM_BOT_TOKEN')
+    """Get Telegram bot token from database"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT setting_value FROM bot_settings WHERE setting_key = 'telegram_bot_token'")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return row[0] if row else None
+    except Exception as e:
+        print(f"[ERROR] Failed to get bot token: {e}")
+        return None
 
 
 def get_openai_key() -> Optional[str]:

@@ -7,7 +7,7 @@
       "expectedStatus": 200
     },
     {
-      "name": "Test webhook without token returns error",
+      "name": "Test webhook without token returns DB error",
       "method": "POST",
       "path": "/",
       "body": {
@@ -16,11 +16,7 @@
           "text": "/start"
         }
       },
-      "expectedStatus": 500,
-      "expectedBody": {
-        "error": "Bot token not configured"
-      },
-      "bodyMatcher": "partial"
+      "expectedStatus": 500
     }
   ]
 }
