@@ -112,19 +112,21 @@ def get_user_id_for_telegram(telegram_lookup_id: str) -> Optional[str]:
     return row[0] if row else None
 
 
-def save_receipt_to_db(user_id: str, receipt_data: Dict[str, Any], telegram_chat_id: int, telegram_message_id: int) -> int:
+def save_receipt_to_db(user_id: str, receipt_data: Dict[str, Any], telegram_chat_id: int, telegram_message_id: int, user_message: str = '') -> int:
     """Save receipt to database and return receipt ID"""
     import uuid
     row = execute_query("""
         INSERT INTO receipts (
-            user_id, uuid, items, total, payment_type, status, 
+            user_id, uuid, external_id, user_message, items, total, payment_type, status, 
             operation_type, demo_mode, created_at, updated_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
     """, (
         user_id,
         str(uuid.uuid4()),
+        f'telegram_{telegram_chat_id}_{telegram_message_id}',
+        user_message,
         psycopg2.extras.Json(receipt_data['items']),
         receipt_data['total'],
         receipt_data.get('payment_type', 'card'),
@@ -419,7 +421,7 @@ def handle_receipt_creation(text: str, chat_id: int, message_id: int, user_id: s
             clear_context_for_chat(chat_id)
             return
         
-        receipt_id = save_receipt_to_db(user_id, receipt_data, chat_id, message_id)
+        receipt_id = save_receipt_to_db(user_id, receipt_data, chat_id, message_id, text)
         message_text = format_receipt_message(receipt_data, receipt_id)
         buttons = create_receipt_buttons(receipt_id)
         
@@ -442,7 +444,7 @@ def handle_repeat_receipt(receipt_id: int, chat_id: int, user_id: str, bot_token
         send_telegram_message(bot_token, chat_id, "❌ Чек не найден")
         return
     
-    new_receipt_id = save_receipt_to_db(user_id, receipt_data, chat_id, 0)
+    new_receipt_id = save_receipt_to_db(user_id, receipt_data, chat_id, 0, 'Повтор чека')
     message_text = format_receipt_message(receipt_data, new_receipt_id)
     buttons = create_receipt_buttons(new_receipt_id)
     send_telegram_message_with_buttons(bot_token, chat_id, message_text, buttons)
@@ -489,7 +491,7 @@ def handle_edit_value(text: str, chat_id: int, message_id: int, user_id: str, bo
                 preview_data['items'][0]['price'] = new_price
                 preview_data['total'] = sum(item['price'] * item.get('quantity', 1) for item in preview_data['items'])
         
-        new_receipt_id = save_receipt_to_db(user_id, preview_data, chat_id, message_id)
+        new_receipt_id = save_receipt_to_db(user_id, preview_data, chat_id, message_id, text)
         message_text = format_receipt_message(preview_data, new_receipt_id)
         buttons = create_receipt_buttons(new_receipt_id)
         
@@ -515,7 +517,7 @@ def handle_payment_change(receipt_id: int, payment_type: str, chat_id: int, mess
         return
     
     receipt_data['payment_type'] = payment_type
-    new_receipt_id = save_receipt_to_db(user_id, receipt_data, chat_id, message_id)
+    new_receipt_id = save_receipt_to_db(user_id, receipt_data, chat_id, message_id, f'Изменен способ оплаты на {payment_type}')
     message_text = format_receipt_message(receipt_data, new_receipt_id)
     buttons = create_receipt_buttons(new_receipt_id)
     
