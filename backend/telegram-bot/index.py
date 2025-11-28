@@ -1488,19 +1488,21 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             provider_name = receipt_data.get('payment_provider_name', '')
             
             if payment_link_enabled and provider_name:
-                # Currently: Payment link - allow switching to regular receipt
-                group_text = f"📄 <b>Тип документа</b>\n\n✅ Сейчас: <b>Платежная ссылка</b>\nПровайдер: <b>{provider_name}</b>\n\nВыбери действие:"
+                # Currently: Payment link - show both document types as options
+                group_text = f"📄 <b>Тип документа</b>\n\n✅ Сейчас: <b>Платежная ссылка</b>\nПровайдер: <b>{provider_name}</b>\n\nВыбери тип документа:"
                 group_buttons = [
-                    [{"text": "🧾 Переключить на обычный чек", "callback_data": f"set_document_receipt_{preview_id}"}],
+                    [{"text": "🧾 Обычный чек", "callback_data": f"set_document_receipt_{preview_id}"}],
+                    [{"text": "🔗 Платежная ссылка (текущий)", "callback_data": f"back_{preview_id}"}],
                     [{"text": "🔗 Изменить провайдера", "callback_data": f"edit_payment_link_{preview_id}"}],
                     [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
                     [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
                 ]
             else:
-                # Currently: Regular receipt - allow switching to payment link
-                group_text = "📄 <b>Тип документа</b>\n\n✅ Сейчас: <b>Обычный чек</b>\n\nВыбери действие:"
+                # Currently: Regular receipt - show both document types as options
+                group_text = "📄 <b>Тип документа</b>\n\n✅ Сейчас: <b>Обычный чек</b>\n\nВыбери тип документа:"
                 group_buttons = [
-                    [{"text": "🔗 Переключить на платежную ссылку", "callback_data": f"edit_payment_link_{preview_id}"}],
+                    [{"text": "🧾 Обычный чек (текущий)", "callback_data": f"back_{preview_id}"}],
+                    [{"text": "🔗 Платежная ссылка", "callback_data": f"edit_payment_link_{preview_id}"}],
                     [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
                     [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
                 ]
