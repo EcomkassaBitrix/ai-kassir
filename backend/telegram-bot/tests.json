@@ -7,7 +7,7 @@
       "expectedStatus": 200
     },
     {
-      "name": "Test webhook without token returns DB error",
+      "name": "Test webhook with /start command",
       "method": "POST",
       "path": "/",
       "body": {
@@ -16,7 +16,11 @@
           "text": "/start"
         }
       },
-      "expectedStatus": 500
+      "expectedStatus": 200,
+      "expectedBody": {
+        "ok": true
+      },
+      "bodyMatcher": "partial"
     }
   ]
 }
