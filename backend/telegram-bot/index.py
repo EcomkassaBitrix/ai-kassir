@@ -128,24 +128,46 @@ def parse_receipt_with_ai(text: str, user_settings: Dict[str, Any], context: Opt
 
 Запрос: "{text}"{context_part}
 
-КРИТИЧНО:
-- name (название): ОБЯЗАТЕЛЬНО. НИКОГДА не подставляй "товар", "услуга" - спрашивай через error
-- price (цена): ОБЯЗАТЕЛЬНА. Если нет - спрашивай через error
-- email/phone: НЕ обязательны, можно null
+КРИТИЧНО про название товара/услуги (name):
+- name ОБЯЗАТЕЛЬНО должно быть конкретным названием товара или услуги
+- Примеры ПРАВИЛЬНЫХ названий: "психолог", "консультация", "кофе", "стрижка", "массаж"
+- НИКОГДА не используй обобщённые слова: "товар", "услуга", "продукт"
+- Если в запросе есть конкретное название - ВСЕГДА используй его
+- ТОЛЬКО если названия нет вообще - верни error
 
-payment_object: 
-- service: психолог, консультация, стрижка, массаж, урок, уборка, доставка, аренда
-- commodity: кофе, телефон, мебель, одежда, еда
+КРИТИЧНО про цену (price):
+- price ОБЯЗАТЕЛЬНА
+- Распознавай разные форматы: "29 рубля", "29₽", "29 руб", "29р"
+- Если цены нет - верни error
 
-payment_method: full_payment (по умолчанию)
+КРИТИЧНО про email:
+- email НЕ обязателен
+- Если в запросе "без почты", "нет почты" - ставь email: null
+- Если email не указан - ставь null
 
-Формат:
-{{"operation_type":"sell","items":[{{"name":"товар","price":100,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":100}}]}}
+payment_object (автоопределение):
+- service: психолог, консультация, стрижка, массаж, урок, уборка, доставка, аренда, коуч
+- commodity: кофе, телефон, мебель, одежда, еда, напитки
 
-Если НЕ ХВАТАЕТ ДАННЫХ - верни error:
-{{"error":"Не хватает данных: укажи цену. Пример: кофе 200₽"}}
+measure (единица измерения):
+- "услуга" для service
+- "шт" для commodity
 
-ВАЖНО: Сумма всех payments = сумма items. Отвечай только JSON без пояснений."""
+payment_method: full_payment (всегда)
+
+Примеры успешного распознавания:
+- "психолог 29 рубля без почты" → {{"operation_type":"sell","items":[{{"name":"психолог","price":29,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":29}}]}}
+- "кофе 200₽" → {{"operation_type":"sell","items":[{{"name":"кофе","price":200,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":200}}]}}
+- "консультация 5000" → {{"operation_type":"sell","items":[{{"name":"консультация","price":5000,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":5000}}]}}
+
+Примеры ошибок (когда возвращать error):
+- "100 рублей" (нет названия) → {{"error":"Укажи что продаёшь за 100₽. Пример: консультация 100₽"}}
+- "создай чек" (нет ни названия, ни цены) → {{"error":"Укажи название и цену. Пример: кофе 200₽"}}
+
+ВАЖНО: 
+- Сумма всех payments = сумма items
+- Отвечай ТОЛЬКО валидным JSON без пояснений
+- Если в запросе есть И название И цена - ВСЕГДА создавай чек, не возвращай error"""
     
     url = "https://gptunnel.ru/v1/chat/completions"
     data = json.dumps({
