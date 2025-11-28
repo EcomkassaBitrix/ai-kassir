@@ -40,7 +40,12 @@ def get_db_connection():
     dsn = os.environ.get('DATABASE_URL')
     if not dsn:
         raise ValueError("DATABASE_URL not configured")
-    return psycopg2.connect(dsn)
+    conn = psycopg2.connect(dsn)
+    # Set search path to correct schema
+    cur = conn.cursor()
+    cur.execute("SET search_path TO t_p7891941_voice_ai_agent_1, public")
+    cur.close()
+    return conn
 
 
 # ============================================================================
