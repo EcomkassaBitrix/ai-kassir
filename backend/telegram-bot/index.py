@@ -1477,9 +1477,9 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             provider_name = receipt_data.get('payment_provider_name', '')
             
             if payment_link_enabled and provider_name:
-                group_text = f"📄 <b>Тип документа</b>\n\n✅ Провайдер: <b>{provider_name}</b>\n⚠️ Тип операции: <b>Продажа</b> (фиксировано)\n\nВыбери параметр:"
+                group_text = f"📄 <b>Тип документа</b>\n\n✅ Сейчас: <b>Платежная ссылка</b>\nПровайдер: <b>{provider_name}</b>\n\nВыбери параметр:"
                 group_buttons = [
-                    [{"text": "🧾 Чек", "callback_data": f"show_receipt_{preview_id}"}],
+                    [{"text": "🧾 Переключить на обычный чек", "callback_data": f"set_document_receipt_{preview_id}"}],
                     [{"text": "🔗 Изменить провайдера", "callback_data": f"edit_payment_link_{preview_id}"}],
                     [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
                 ]
@@ -1605,6 +1605,33 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         edit_message_with_buttons(bot_token, chat_id, message_id, group_text, group_buttons)
         print(f"[DEBUG] edit_message_with_buttons completed")
         return create_response({'ok': True})
+    
+    elif callback_data.startswith('set_document_receipt_'):
+        # Switch from payment link to regular receipt
+        preview_id = callback_data.replace('set_document_receipt_', '')
+        print(f"[DEBUG] Switching to regular receipt for preview_id: {preview_id}")
+        
+        preview_data = get_preview_data(preview_id)
+        if not preview_data:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
+        
+        # Disable payment link
+        success = disable_payment_link(preview_id)
+        
+        if not success:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка при переключении на чек")
+            return create_response({'ok': True})
+        
+        edit_message(bot_token, chat_id, message_id, "✅ Тип документа изменен на обычный чек!\n\nВозвращаю к чеку...")
+        
+        # Wait and show updated preview
+        import time
+        time.sleep(1)
+        
+        # Trigger back button to show updated receipt
+        callback_query['data'] = f"back_{preview_id}"
+        return handle_callback_query(callback_query, bot_token)
     
     elif callback_data.startswith('edit_'):
         # General edit handler - shows main edit menu with groups
@@ -3467,6 +3494,59 @@ def update_preview_payment_provider(preview_id: str, provider_id: str, provider_
         
     except Exception as e:
         print(f"[ERROR] Failed to update payment provider: {str(e)}")
+        return False
+
+
+def disable_payment_link(preview_id: str) -> bool:
+    """Disable payment link and switch back to regular receipt"""
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return False
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT receipt_data FROM telegram_previews WHERE preview_id = %s",
+            (preview_id,)
+        )
+        result = cur.fetchone()
+        
+        if not result or not result[0]:
+            print(f"[ERROR] No receipt_data found for preview_id: {preview_id}")
+            cur.close()
+            conn.close()
+            return False
+        
+        receipt_data = result[0]
+        
+        # Remove payment link settings
+        receipt_data['payment_link_enabled'] = False
+        if 'payment_provider_id' in receipt_data:
+            del receipt_data['payment_provider_id']
+        if 'payment_provider_name' in receipt_data:
+            del receipt_data['payment_provider_name']
+        
+        # Reset payment type to standard безналичный (1)
+        if 'payments' in receipt_data and len(receipt_data['payments']) > 0:
+            receipt_data['payments'][0]['type'] = 1  # Безналичный
+            print(f"[DEBUG] Reset payment type to 1 (безналичный) for regular receipt")
+        
+        cur.execute(
+            "UPDATE telegram_previews SET receipt_data = %s WHERE preview_id = %s",
+            (json.dumps(receipt_data), preview_id)
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print(f"[SUCCESS] Disabled payment link for preview {preview_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to disable payment link: {str(e)}")
         return False
 
 
