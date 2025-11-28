@@ -1264,18 +1264,20 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         elif callback_data.startswith('edit_payment_object_'):
             field = 'payment_object'
             preview_id = callback_data.replace('edit_payment_object_', '')
+            # Use short preview_id (first 8 chars) to fit Telegram's 64-byte callback_data limit
+            short_id = preview_id[:8] if len(preview_id) >= 8 else preview_id
             prompt_text = "📦 <b>Выбери предмет расчета:</b>"
             
             object_buttons = [
-                [{"text": "Товар", "callback_data": f"set_payment_object_commodity_{preview_id}"}],
-                [{"text": "Подакцизный товар", "callback_data": f"set_payment_object_excise_{preview_id}"}],
-                [{"text": "Работа", "callback_data": f"set_payment_object_job_{preview_id}"}],
-                [{"text": "Услуга", "callback_data": f"set_payment_object_service_{preview_id}"}],
-                [{"text": "Аванс/Задаток", "callback_data": f"set_payment_object_advance_{preview_id}"}],
-                [{"text": "РИД", "callback_data": f"set_payment_object_intellectual_property_{preview_id}"}],
-                [{"text": "Имущественное право", "callback_data": f"set_payment_object_property_right_{preview_id}"}],
-                [{"text": "Составной предмет", "callback_data": f"set_payment_object_composite_{preview_id}"}],
-                [{"text": "Иной предмет", "callback_data": f"set_payment_object_another_{preview_id}"}],
+                [{"text": "Товар", "callback_data": f"set_payment_object_commodity_{short_id}"}],
+                [{"text": "Подакцизный товар", "callback_data": f"set_payment_object_excise_{short_id}"}],
+                [{"text": "Работа", "callback_data": f"set_payment_object_job_{short_id}"}],
+                [{"text": "Услуга", "callback_data": f"set_payment_object_service_{short_id}"}],
+                [{"text": "Аванс/Задаток", "callback_data": f"set_payment_object_advance_{short_id}"}],
+                [{"text": "РИД", "callback_data": f"set_payment_object_intellectual_property_{short_id}"}],
+                [{"text": "Имущественное право", "callback_data": f"set_payment_object_property_right_{short_id}"}],
+                [{"text": "Составной предмет", "callback_data": f"set_payment_object_composite_{short_id}"}],
+                [{"text": "Иной предмет", "callback_data": f"set_payment_object_another_{short_id}"}],
                 [{"text": "« Назад", "callback_data": f"edit_group_items_{preview_id}"}]
             ]
             
@@ -1284,15 +1286,17 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         elif callback_data.startswith('edit_payment_method_'):
             field = 'payment_method'
             preview_id = callback_data.replace('edit_payment_method_', '')
+            # Use short preview_id (first 8 chars) to fit Telegram's 64-byte callback_data limit
+            short_id = preview_id[:8] if len(preview_id) >= 8 else preview_id
             prompt_text = "💵 <b>Выбери признак расчета:</b>"
             
             method_buttons = [
-                [{"text": "Полный расчет", "callback_data": f"set_payment_method_full_payment_{preview_id}"}],
-                [{"text": "Предоплата 100%", "callback_data": f"set_payment_method_full_prepayment_{preview_id}"}],
-                [{"text": "Предоплата", "callback_data": f"set_payment_method_prepayment_{preview_id}"}],
-                [{"text": "Аванс", "callback_data": f"set_payment_method_advance_{preview_id}"}],
-                [{"text": "Частичный расчет", "callback_data": f"set_payment_method_partial_payment_{preview_id}"}],
-                [{"text": "Кредит", "callback_data": f"set_payment_method_credit_{preview_id}"}],
+                [{"text": "Полный расчет", "callback_data": f"set_payment_method_full_payment_{short_id}"}],
+                [{"text": "Предоплата 100%", "callback_data": f"set_payment_method_full_prepayment_{short_id}"}],
+                [{"text": "Предоплата", "callback_data": f"set_payment_method_prepayment_{short_id}"}],
+                [{"text": "Аванс", "callback_data": f"set_payment_method_advance_{short_id}"}],
+                [{"text": "Частичный расчет", "callback_data": f"set_payment_method_partial_payment_{short_id}"}],
+                [{"text": "Кредит", "callback_data": f"set_payment_method_credit_{short_id}"}],
                 [{"text": "« Назад", "callback_data": f"edit_group_items_{preview_id}"}]
             ]
             
@@ -1907,8 +1911,8 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         return handle_callback_query(callback_query, bot_token)
     
     elif callback_data.startswith('set_payment_object_'):
-        # Extract payment_object and preview_id properly
-        # Format: set_payment_object_{payment_object}_{preview_id}
+        # Extract payment_object and short_id properly
+        # Format: set_payment_object_{payment_object}_{short_id}
         # payment_object can contain underscores (e.g., intellectual_property)
         remaining = callback_data.replace('set_payment_object_', '')
         
@@ -1938,20 +1942,26 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         ]
         
         payment_object = None
-        preview_id = None
+        short_id = None
         
         # Try to match known multi-word objects first
         for obj in known_objects:
             if remaining.startswith(obj + '_'):
                 payment_object = obj
-                preview_id = remaining[len(obj) + 1:]  # +1 for underscore
+                short_id = remaining[len(obj) + 1:]  # +1 for underscore
                 break
         
         # If no match, assume single-word object (commodity, service, excise, job, advance, composite, another, lottery, deposit, expense)
         if not payment_object:
             parts = remaining.split('_', 1)
             payment_object = parts[0]
-            preview_id = parts[1] if len(parts) > 1 else ''
+            short_id = parts[1] if len(parts) > 1 else ''
+        
+        # Find full preview_id from short_id
+        preview_id = find_preview_by_short_id(short_id, lookup_id)
+        if not preview_id:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
         
         update_preview_field_value(preview_id, 'payment_object', payment_object)
         
@@ -1975,8 +1985,8 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         return handle_callback_query(callback_query, bot_token)
     
     elif callback_data.startswith('set_payment_method_'):
-        # Extract payment_method and preview_id properly
-        # Format: set_payment_method_{payment_method}_{preview_id}
+        # Extract payment_method and short_id properly
+        # Format: set_payment_method_{payment_method}_{short_id}
         # payment_method can contain underscores (e.g., full_prepayment, partial_payment)
         remaining = callback_data.replace('set_payment_method_', '')
         
@@ -1989,20 +1999,26 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
         ]
         
         payment_method = None
-        preview_id = None
+        short_id = None
         
         # Try to match known multi-word methods first
         for method in known_methods:
             if remaining.startswith(method + '_'):
                 payment_method = method
-                preview_id = remaining[len(method) + 1:]  # +1 for underscore
+                short_id = remaining[len(method) + 1:]  # +1 for underscore
                 break
         
         # If no match, assume single-word method (prepayment, advance, credit)
         if not payment_method:
             parts = remaining.split('_', 1)
             payment_method = parts[0]
-            preview_id = parts[1] if len(parts) > 1 else ''
+            short_id = parts[1] if len(parts) > 1 else ''
+        
+        # Find full preview_id from short_id
+        preview_id = find_preview_by_short_id(short_id, lookup_id)
+        if not preview_id:
+            edit_message(bot_token, chat_id, message_id, "❌ Ошибка: данные не найдены")
+            return create_response({'ok': True})
         
         update_preview_field_value(preview_id, 'payment_method', payment_method)
         
@@ -3672,6 +3688,35 @@ def update_preview_operation_type(preview_id: str, operation_type: str) -> bool:
     except Exception as e:
         print(f"[ERROR] Failed to update preview operation_type: {str(e)}")
         return False
+
+
+def find_preview_by_short_id(short_id: str, telegram_id: int) -> str:
+    """Find full preview_id by short hash (first 8 chars) for a specific user"""
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return None
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        # Find preview_id that starts with short_id for this user
+        cur.execute(
+            "SELECT preview_id FROM telegram_previews WHERE telegram_id = %s AND preview_id LIKE %s LIMIT 1",
+            (telegram_id, f"{short_id}%")
+        )
+        result = cur.fetchone()
+        
+        cur.close()
+        conn.close()
+        
+        if result:
+            return result[0]
+        return None
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to find preview by short_id: {str(e)}")
+        return None
 
 
 def update_preview_field_value(preview_id: str, field: str, value: str) -> bool:
