@@ -67,16 +67,14 @@ def get_bot_token() -> Optional[str]:
 def get_ai_settings() -> Optional[Dict[str, Any]]:
     try:
         row = execute_query(
-            "SELECT gptunnel_api_key, yandex_speechkit_key, text_provider, voice_provider FROM ai_settings LIMIT 1",
+            "SELECT yandex_speechkit_key, voice_provider FROM ai_settings LIMIT 1",
             fetch_one=True
         )
         if not row:
             return None
         return {
-            'gptunnel_key': row[0],
-            'yandex_key': row[1],
-            'text_provider': row[2],
-            'voice_provider': row[3]
+            'yandex_key': row[0],
+            'voice_provider': row[1]
         }
     except Exception as e:
         print(f"[ERROR] Failed to get AI settings: {e}")
@@ -117,115 +115,58 @@ def get_user_id_for_telegram(telegram_lookup_id: str) -> Optional[str]:
     return row[0] if row else None
 
 
-def parse_receipt_with_ai(text: str, user_settings: Dict[str, Any], context: Optional[str] = None) -> Dict[str, Any]:
-    ai_settings = get_ai_settings()
-    if not ai_settings or not ai_settings.get('gptunnel_key'):
-        raise ValueError("GPTunnel API key not configured")
+def call_process_receipt_api(text: str, user_id: str, context: Optional[str] = None) -> Dict[str, Any]:
+    '''
+    Call process-receipt backend API to create receipt
+    Returns receipt data or error dict
+    '''
+    process_receipt_url = 'https://functions.poehali.dev/734da785-2867-4c5d-b20c-90fc6d86b11c'
     
-    context_part = f"\n\nКонтекст предыдущего запроса: \"{context}\"\n\nВАЖНО: Если новый запрос содержит только недостающие данные, объедини их с контекстом:\n- Если есть цена в контексте, но нет названия товара - возьми название из нового запроса\n- Если есть товар в контексте, но нет email - возьми email из нового запроса\n- Пример: контекст=\"создай чек 50 без почты\", новый=\"хлеб\" → {{{{'name':'хлеб','price':50}}}}\n- Пример: контекст=\"кофе 200₽\", новый=\"test@mail.ru\" → {{{{'name':'кофе','price':200,'email':'test@mail.ru'}}}}" if context else ""
+    payload = {
+        'message': text,
+        'preview_only': True,
+        'document_type': 'receipt'
+    }
     
-    prompt = f"""Ты ИИ кассир, который получает запросы на создание чека текстом или голосовыми сообщениями.
-
-Задача: Преобразуй запрос в JSON, заполняя часть API запроса по документации Ecomkassa (https://ecomkassa.ru/dokumentacija_cheki_12).
-
-Запрос: "{text}"{context_part}
-
-ВАЖНО: Запрос может быть голосовым (с ошибками распознавания). Исправляй очевидные опечатки и синонимы:
-- "150₽" = "150 рублей" = "150р" = "150 руб" = "полторы сотни"
-- "1300.12₽" = "1300,12 рублей" = "тысяча триста рублей двенадцать копеек"
-- "ivan@mail.ru" = "иван собака мейл точка ру" = "ivan at mail dot ru"
-- Числа: "2000" = "две тысячи" = "2к" = "2 тыщи"
-
-КРИТИЧНО про название товара/услуги (name):
-- Название товара - это конкретный товар или услуга, которую продаешь
-- Примеры: "мебель на заказ за 1300₽" → name: "мебель на заказ"
-- Примеры: "Я продаю стрижку и укладку за 2000" → name: "стрижка и укладка"
-- Примеры: "кофе американо 200₽" → name: "кофе американо"
-- НЕ включай в название: цену, способ оплаты, email, телефон
-
-КРИТИЧНО про обязательные данные:
-- price (цена): ОБЯЗАТЕЛЬНА. Если не указана - спрашивай через error
-- name (название товара/услуги): ОБЯЗАТЕЛЬНО. НИКОГДА не подставляй "товар", "услуга" - всегда спрашивай через error, что именно продаётся
-- email/phone: НЕ обязательны. Если не указаны - можно оставить null (бэкэнд подставит дефолтный email)
-
-ВАЖНО: Если пользователь явно указывает отсутствие email клиента, оставляй client.email = null. Бэкэнд автоматически подставит дефолтный email из настроек.
-Варианты фраз: "без почты", "нет почты", "без email", "нет email", "не отправлять чек", "без отправки", "почты нет", "email нет", "на дефолтный email", "на стандартную почту".
-
-Поля (только корректные значения):
-operation_type: sell/sell_refund
-payment_object: commodity/service (ВАЖНО: автоматически определяй по контексту!)
-vat: none/vat20/vat10 (дефолт none)
-measure: шт/услуга
-client: email (проверь формат), phone (+7...), МОЖНО null если "без почты"
-
-ВАЖНО про payment_object (предмет расчета):
-• service - если это УСЛУГА (действие, работа человека или выполнение чего-либо):
-  - Профессиональные услуги: психолог, консультация, коуч, юрист, адвокат, бухгалтер, нотариус
-  - Медицинские услуги: массаж, процедура, лечение, диагностика, анализ
-  - Красота: стрижка, укладка, маникюр, педикюр, макияж, окрашивание, наращивание
-  - Образовательные: урок, занятие, курс, тренинг, вебинар, мастер-класс
-  - Бытовые: уборка, ремонт, настройка, установка, доставка, транспорт, такси
-  - Креативные: дизайн, разработка, фотосессия, видеосъёмка, монтаж
-  - Спорт: тренировка, фитнес, йога, массаж
-  - Аренда: помещения, оборудования, транспорта
-• commodity - если это ТОВАР (физический предмет, который продается):
-  - Еда и напитки: кофе, чай, обед, пирожок, торт, продукты
-  - Техника: телефон, ноутбук, наушники, зарядка
-  - Одежда: футболка, джинсы, обувь, аксессуары
-  - Мебель: шкаф, стол, стул, диван
-  - Другие физические товары
-
-Если неясно - смотри на контекст: "психолог" = услуга, "кофе" = товар, "мебель на заказ" = товар
-
-payment_method: full_payment (по умолчанию для обычных продаж)
-
-Успешный формат (простая оплата):
-{{"operation_type":"sell","items":[{{"name":"Товар","price":100,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":"user@mail.ru","phone":null}},"payments":[{{"type":"1","sum":100}}]}}
-
-Формат БЕЗ ПОЧТЫ (бэкэнд подставит дефолтный email):
-{{"operation_type":"sell","items":[{{"name":"Товар","price":100,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":100}}]}}
-
-Если НЕ ХВАТАЕТ ДАННЫХ - ОБЯЗАТЕЛЬНО верни error с детальным объяснением:
-{{"error":"Не хватает данных для чека: укажи цену товара/услуги. Email можно не указывать (будет использован дефолтный). Пример: изготовление шкафа 25000₽"}}
-
-Примеры запросов:
-- "кофе 200₽ без почты" → {{"operation_type":"sell","items":[{{"name":"кофе","price":200,"quantity":1,"measure":"шт","vat":"none","payment_method":"full_payment","payment_object":"commodity"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":200}}]}}
-- "психолог 27 рубля без почты" → {{"operation_type":"sell","items":[{{"name":"психолог","price":27,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":27}}]}}
-- "консультация юриста 3000₽" → {{"operation_type":"sell","items":[{{"name":"консультация юриста","price":3000,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":3000}}]}}
-- "стрижка и укладка 2500₽" → {{"operation_type":"sell","items":[{{"name":"стрижка и укладка","price":2500,"quantity":1,"measure":"услуга","vat":"none","payment_method":"full_payment","payment_object":"service"}}],"client":{{"email":null,"phone":null}},"payments":[{{"type":"1","sum":2500}}]}}
-- "кофе" → {{"error":"Укажи цену. Email необязателен (будет дефолтный). Пример: кофе 200₽"}}
-- "создай чек 50 без почты" → {{"error":"Что продаёшь за 50₽? Укажи название товара/услуги. Пример: кофе 50₽ без почты"}}
-
-ВАЖНО: Сумма всех payments = сумма items. Отвечай только JSON без пояснений."""
+    if context:
+        payload['context_message'] = context
     
-    url = "https://gptunnel.ru/v1/chat/completions"
-    data = json.dumps({
-        "model": "gpt-4o-mini",
-        "messages": [{"role": "user", "content": prompt}],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.1
-    }).encode('utf-8')
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(
+        process_receipt_url,
+        data=data,
+        headers={
+            'Content-Type': 'application/json',
+            'X-User-Id': user_id
+        },
+        method='POST'
+    )
     
-    req = urllib.request.Request(url, data=data, headers={
-        'Content-Type': 'application/json', 
-        'Authorization': f'Bearer {ai_settings["gptunnel_key"]}'
-    })
-    with urllib.request.urlopen(req) as response:
-        result = json.loads(response.read().decode('utf-8'))
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            print(f"[INFO] process-receipt response: {result}")
+            
+            if result.get('success') is False and result.get('message'):
+                return {'error': result['message']}
+            
+            if 'receipt' not in result:
+                return {'error': 'Не удалось создать чек. Попробуй ещё раз'}
+            
+            return result['receipt']
     
-    content = result['choices'][0]['message']['content']
-    parsed_data = json.loads(content)
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        print(f"[ERROR] process-receipt HTTP error: {e.code}, body: {error_body}")
+        try:
+            error_data = json.loads(error_body)
+            return {'error': error_data.get('message') or error_data.get('error', 'Ошибка создания чека')}
+        except:
+            return {'error': f'Ошибка сервера: {e.code}'}
     
-    if 'error' in parsed_data:
-        return parsed_data
-    
-    if 'items' not in parsed_data or not parsed_data['items']:
-        return {'error': 'Не могу распознать товары. Укажи название и цену. Пример: кофе 200₽'}
-    
-    total = sum(item['price'] * item.get('quantity', 1) for item in parsed_data['items'])
-    parsed_data['total'] = round(total, 2)
-    
-    return parsed_data
+    except Exception as e:
+        print(f"[ERROR] process-receipt call failed: {e}")
+        return {'error': f'Ошибка соединения: {str(e)}'}
 
 
 def transcribe_voice_with_yandex(audio_bytes: bytes) -> str:
@@ -363,8 +304,8 @@ def handle_receipt_creation(text: str, chat_id: int, message_id: int, user_id: s
             send_telegram_message(bot_token, chat_id, "❌ Настройки пользователя не найдены. Зайди в веб-интерфейс и настрой интеграцию с Екомкасса")
             return
         
-        receipt_data = parse_receipt_with_ai(text, user_settings, context_text)
-        print(f"[INFO] AI parsed receipt: {receipt_data}")
+        receipt_data = call_process_receipt_api(text, user_id, context_text)
+        print(f"[INFO] Receipt data from process-receipt: {receipt_data}")
         
         if 'error' in receipt_data:
             send_telegram_message(bot_token, chat_id, f"❓ {receipt_data['error']}\n\nОтправь недостающие данные или напиши 'отмена'")
