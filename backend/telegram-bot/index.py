@@ -383,12 +383,15 @@ def handle_voice_message(message: Dict[str, Any], bot_token: str) -> Dict[str, A
 def handle_receipt_creation(text: str, chat_id: int, message_id: int, user_id: str, bot_token: str) -> None:
     """Handle receipt creation from text"""
     context = get_context_for_chat(chat_id)
+    print(f"[INFO] Creating receipt for chat {chat_id}, text: {text[:50]}...")
     
     try:
         receipt_data = parse_receipt_with_ai(text, context)
+        print(f"[INFO] AI parsed receipt: {receipt_data}")
         
         if not receipt_data.get('items'):
-            send_telegram_message(bot_token, chat_id, "❌ Не могу распознать товары в сообщении")
+            send_telegram_message(bot_token, chat_id, "❌ Не могу распознать товары в сообщении. Попробуй описать покупку по-другому или напиши 'отмена'")
+            clear_context_for_chat(chat_id)
             return
         
         receipt_id = save_receipt_to_db(user_id, receipt_data, chat_id, message_id)
@@ -397,10 +400,13 @@ def handle_receipt_creation(text: str, chat_id: int, message_id: int, user_id: s
         
         send_telegram_message_with_buttons(bot_token, chat_id, message_text, buttons)
         save_context_for_chat(chat_id, {'last_receipt': receipt_data, 'last_message': text})
+        print(f"[INFO] Receipt {receipt_id} created successfully")
         
     except Exception as e:
         print(f"[ERROR] Receipt creation failed: {e}")
-        send_telegram_message(bot_token, chat_id, f"❌ Ошибка создания чека: {str(e)}")
+        send_telegram_message(bot_token, chat_id, f"❌ Ошибка создания чека: {str(e)}. Попробуй ещё раз или напиши 'отмена'")
+        clear_context_for_chat(chat_id)
+        clear_editing_preview(chat_id)
 
 
 def handle_repeat_receipt(receipt_id: int, chat_id: int, user_id: str, bot_token: str) -> None:
@@ -439,33 +445,40 @@ def handle_edit_field(receipt_id: int, field: str, chat_id: int, message_id: int
 def handle_edit_value(text: str, chat_id: int, message_id: int, user_id: str, bot_token: str) -> None:
     """Handle edit value input"""
     editing_preview = find_editing_preview_for_chat(chat_id)
+    print(f"[INFO] Edit value for chat {chat_id}, text: {text}")
     
     if not editing_preview:
+        print(f"[WARN] No editing preview found for chat {chat_id}")
         return
     
     preview_data = editing_preview['preview_data']
     field = editing_preview['field_to_edit']
     preview_message_id = editing_preview['message_id']
     
-    if field == 'name' and preview_data.get('items'):
-        preview_data['items'][0]['name'] = text
-    elif field == 'price':
-        try:
+    try:
+        if field == 'name' and preview_data.get('items'):
+            preview_data['items'][0]['name'] = text
+        elif field == 'price':
             new_price = float(text.replace(',', '.').replace('₽', '').strip())
             if preview_data.get('items'):
                 preview_data['items'][0]['price'] = new_price
                 preview_data['total'] = sum(item['price'] * item.get('quantity', 1) for item in preview_data['items'])
-        except ValueError:
-            send_telegram_message(bot_token, chat_id, "❌ Неверный формат цены")
-            return
-    
-    new_receipt_id = save_receipt_to_db(user_id, preview_data, chat_id, message_id)
-    message_text = format_receipt_message(preview_data, new_receipt_id)
-    buttons = create_receipt_buttons(new_receipt_id)
-    
-    edit_telegram_message(bot_token, chat_id, preview_message_id, message_text, buttons)
-    clear_editing_preview(chat_id)
-    send_telegram_message(bot_token, chat_id, "✅ Чек обновлен!")
+        
+        new_receipt_id = save_receipt_to_db(user_id, preview_data, chat_id, message_id)
+        message_text = format_receipt_message(preview_data, new_receipt_id)
+        buttons = create_receipt_buttons(new_receipt_id)
+        
+        edit_telegram_message(bot_token, chat_id, preview_message_id, message_text, buttons)
+        clear_editing_preview(chat_id)
+        send_telegram_message(bot_token, chat_id, "✅ Чек обновлен!")
+        print(f"[INFO] Receipt updated successfully")
+        
+    except ValueError:
+        send_telegram_message(bot_token, chat_id, "❌ Неверный формат цены. Попробуй ещё раз или напиши 'отмена'")
+    except Exception as e:
+        print(f"[ERROR] Edit value failed: {e}")
+        send_telegram_message(bot_token, chat_id, f"❌ Ошибка обновления: {str(e)}. Напиши 'отмена' чтобы начать заново")
+        clear_editing_preview(chat_id)
 
 
 def handle_payment_change(receipt_id: int, payment_type: str, chat_id: int, message_id: int, user_id: str, bot_token: str) -> None:
@@ -699,13 +712,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         user_id = get_user_id_for_telegram(lookup_id)
         if not user_id:
+            print(f"[WARN] User not found for lookup_id: {lookup_id}")
             send_telegram_message(bot_token, chat_id, "❌ Пользователь не найден. Отправь /start с кодом привязки")
             return create_response({'ok': True})
         
-        # Clear context on commands/cancel
-        if text.startswith('/') or text.lower() in ['отмена', 'отменить', 'cancel']:
+        print(f"[INFO] Processing message from user {user_id}, chat {chat_id}, text: {text[:50]}...")
+        
+        # Clear context on cancel command
+        if text.lower() in ['отмена', 'отменить', 'cancel']:
             clear_context_for_chat(chat_id)
             clear_editing_preview(chat_id)
+            send_telegram_message(bot_token, chat_id, "✅ Контекст очищен. Можешь начать заново")
+            return create_response({'ok': True})
         
         # Handle commands
         if text.startswith('/start'):
