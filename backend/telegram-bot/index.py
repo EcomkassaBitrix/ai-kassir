@@ -49,7 +49,7 @@ def execute_query(query: str, params=None, fetch_one=False, fetch_all=False, com
     
     # Add schema prefix to table names if not already present
     tables_to_prefix = ['bot_settings', 'telegram_users', 'receipts', 'editing_previews', 
-                        'conversation_contexts', 'telegram_link_codes', 'chat_contexts']
+                        'chat_contexts', 'telegram_link_codes']
     modified_query = query
     for table in tables_to_prefix:
         if table in modified_query and f't_p7891941_voice_ai_agent_1.{table}' not in modified_query:
@@ -181,7 +181,7 @@ def clear_editing_preview(chat_id: int) -> None:
 def save_context_for_chat(chat_id: int, context_data: Dict[str, Any]) -> None:
     """Save conversation context"""
     execute_query("""
-        INSERT INTO conversation_contexts (chat_id, context_data, updated_at)
+        INSERT INTO chat_contexts (chat_id, context_data, updated_at)
         VALUES (%s, %s, %s) ON CONFLICT (chat_id)
         DO UPDATE SET context_data = EXCLUDED.context_data, updated_at = EXCLUDED.updated_at
     """, (chat_id, psycopg2.extras.Json(context_data), datetime.now()), commit=True)
@@ -189,13 +189,13 @@ def save_context_for_chat(chat_id: int, context_data: Dict[str, Any]) -> None:
 
 def get_context_for_chat(chat_id: int) -> Optional[Dict[str, Any]]:
     """Get conversation context"""
-    row = execute_query("SELECT context_data FROM conversation_contexts WHERE chat_id = %s", (chat_id,), fetch_one=True)
+    row = execute_query("SELECT context_data FROM chat_contexts WHERE chat_id = %s", (chat_id,), fetch_one=True)
     return row[0] if row else None
 
 
 def clear_context_for_chat(chat_id: int) -> None:
     """Clear conversation context"""
-    execute_query("DELETE FROM conversation_contexts WHERE chat_id = %s", (chat_id,), commit=True)
+    execute_query("DELETE FROM chat_contexts WHERE chat_id = %s", (chat_id,), commit=True)
 
 
 # ============================================================================
