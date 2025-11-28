@@ -807,21 +807,73 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     })
                 }
     
-    # CRITICAL: If payment link requested but no provider selected, show error
+    # CRITICAL: If payment link requested but no provider selected, check available providers
     # Skip validation if edited_data already has payment_provider_id set
     has_provider_in_edited_data = parsed_receipt.get('payment_link_enabled') and parsed_receipt.get('payment_provider_id')
     if document_type == 'link' and not auto_selected_provider and not has_provider_in_edited_data:
-        return {
-            'statusCode': 400,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps({
-                'success': False,
-                'message': '⚠️ Для платежной ссылки нужно указать провайдера.\n\nУкажи провайдера в запросе:\n• Сбербанк\n• ЮКасса\n• Тинькофф\n• Альфа-Банк\n\nПример: "Консультация 5000₽ ссылка Сбербанк"\n\nИли подключи провайдеров в ЕкомКасса:\n🔗 https://app.ecomkassa.ru/admin/integrations'
-            })
-        }
+        # Load available payment providers from Ecomkassa
+        available_providers = get_payment_providers(settings)
+        
+        if not available_providers or len(available_providers) == 0:
+            # No providers connected - tell user to connect in Ecomkassa
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({
+                    'success': False,
+                    'error': '⚠️ У тебя нет подключенных платежных провайдеров.\n\nПодключи хотя бы один провайдер в ЕкомКасса:\n🔗 https://app.ecomkassa.ru/admin/integrations\n\nНапример:\n• Сбербанк\n• ЮКасса\n• Тинькофф\n• Точка (СБП или эквайринг)\n\nПосле подключения создай чек заново.'
+                })
+            }
+        elif len(available_providers) == 1:
+            # Only one provider - auto-select it
+            provider_id = available_providers[0].get('id')
+            provider_desc = available_providers[0].get('description', f'Провайдер {provider_id}')
+            
+            # Clean provider name
+            provider_name = provider_desc.replace('Платёж через счёт ', '')
+            provider_name = provider_name.replace('Платёж через эквайринг ', '')
+            provider_name = provider_name.replace('Платёж через ', '')
+            provider_name = provider_name.replace('"', '')
+            
+            # Auto-apply this provider
+            parsed_receipt['payment_link_enabled'] = True
+            parsed_receipt['payment_provider_id'] = int(provider_id)
+            parsed_receipt['payment_provider_name'] = provider_name
+            parsed_receipt['operation_type'] = 'sell'
+            
+            # Set provider ID as payment type
+            if 'payments' in parsed_receipt and len(parsed_receipt['payments']) > 0:
+                parsed_receipt['payments'][0]['type'] = int(provider_id)
+            
+            print(f"[DEBUG] Auto-selected single provider: id={provider_id}, name={provider_name}")
+        else:
+            # Multiple providers - need user to specify which one
+            provider_names = []
+            for provider in available_providers[:10]:  # Show max 10 providers
+                desc = provider.get('description', '')
+                # Clean provider description
+                desc = desc.replace('Платёж через счёт ', '')
+                desc = desc.replace('Платёж через эквайринг ', '')
+                desc = desc.replace('Платёж через ', '')
+                desc = desc.replace('"', '')
+                provider_names.append(f"• {desc}")
+            
+            providers_list = '\n'.join(provider_names)
+            
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({
+                    'success': False,
+                    'error': f'⚠️ У тебя подключено несколько платежных провайдеров.\n\nУкажи в запросе, какой использовать:\n\n{providers_list}\n\nПример:\n"Консультация 5000₽ ссылка Сбербанк"\n"Подписка 1000₽ ссылка Точка СБП"'
+                })
+            }
     
     # CRITICAL: Special case - multiple "Точка" providers detected
     if detected_provider_keyword == 'точка_multiple' and document_type == 'link':
@@ -1106,6 +1158,43 @@ def get_ecomkassa_token(login: str, password: str) -> Optional[str]:
     
     except Exception as e:
         print(f"[DEBUG] Exception getting token: {str(e)}")
+        return None
+
+
+def get_payment_providers(settings: dict) -> Optional[list]:
+    '''Load payment providers from Ecomkassa API'''
+    login = settings.get('ecomkassa_login', '')
+    password = settings.get('ecomkassa_password', '')
+    group_code = settings.get('group_code', '')
+    
+    if not (login and password and group_code):
+        print(f"[ERROR] Missing ecomkassa credentials")
+        return None
+    
+    token = get_ecomkassa_token(login, password)
+    if not token:
+        print(f"[ERROR] Failed to get ecomkassa token")
+        return None
+    
+    try:
+        api_url = f'https://app.ecomkassa.ru/fiscalorder/v4/{group_code}/paymentTypes'
+        
+        req = urllib.request.Request(
+            api_url,
+            headers={
+                'Content-Type': 'application/json',
+                'Token': token
+            },
+            method='GET'
+        )
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            providers = json.loads(response.read().decode('utf-8'))
+            print(f"[DEBUG] Loaded {len(providers)} payment providers")
+            return providers
+    
+    except Exception as e:
+        print(f"[ERROR] Failed to load payment providers: {e}")
         return None
 
 
