@@ -648,7 +648,9 @@ def call_process_receipt_backend(user_message: str, user_id: str, chat_id: int =
     # CRITICAL: Get context from previous incomplete request (if exists)
     context_message = ''
     if chat_id:
+        print(f"[DEBUG] Attempting to get context for chat_id: {chat_id}")
         context_message = get_context_for_chat(chat_id)
+        print(f"[DEBUG] get_context_for_chat returned: '{context_message}'")
         if context_message:
             print(f"[DEBUG] Found context from previous request: '{context_message}'")
     
@@ -3705,8 +3707,10 @@ def save_context_for_chat(chat_id: int, message: str) -> None:
 
 def get_context_for_chat(chat_id: int) -> str:
     '''Get stored context message for chat'''
+    print(f"[DEBUG] get_context_for_chat called with chat_id={chat_id}")
     dsn = os.environ.get('DATABASE_URL')
     if not dsn:
+        print(f"[ERROR] DATABASE_URL not set")
         return ''
     
     try:
@@ -3722,18 +3726,22 @@ def get_context_for_chat(chat_id: int) -> str:
             ")"
         )
         
+        print(f"[DEBUG] Executing SELECT for chat_id={chat_id}")
         cur.execute(
             "SELECT context_message FROM telegram_context WHERE chat_id = %s",
             (chat_id,)
         )
         
         result = cur.fetchone()
+        print(f"[DEBUG] Query result: {result}")
         cur.close()
         conn.close()
         
         if result and result[0]:
+            print(f"[DEBUG] Returning context: '{result[0]}'")
             return result[0]
         
+        print(f"[DEBUG] No context found, returning empty string")
         return ''
     except Exception as e:
         print(f"[ERROR] Failed to get context: {e}")
