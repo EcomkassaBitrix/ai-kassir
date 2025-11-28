@@ -28,9 +28,24 @@ def get_bot_token() -> Optional[str]:
         return None
 
 
-def get_openai_key() -> Optional[str]:
-    """Get OpenAI API key from environment"""
-    return os.environ.get('OPENAI_API_KEY')
+def get_ai_settings() -> Optional[Dict[str, Any]]:
+    """Get AI settings from database"""
+    try:
+        row = execute_query(
+            "SELECT gptunnel_api_key, yandex_speechkit_key, text_provider, voice_provider FROM ai_settings LIMIT 1",
+            fetch_one=True
+        )
+        if not row:
+            return None
+        return {
+            'gptunnel_key': row[0],
+            'yandex_key': row[1],
+            'text_provider': row[2],
+            'voice_provider': row[3]
+        }
+    except Exception as e:
+        print(f"[ERROR] Failed to get AI settings: {e}")
+        return None
 
 
 def get_db_connection():
@@ -49,7 +64,7 @@ def execute_query(query: str, params=None, fetch_one=False, fetch_all=False, com
     
     # Add schema prefix to table names if not already present
     tables_to_prefix = ['bot_settings', 'telegram_users', 'receipts', 'editing_previews', 
-                        'chat_contexts', 'telegram_link_codes']
+                        'chat_contexts', 'telegram_link_codes', 'ai_settings']
     modified_query = query
     for table in tables_to_prefix:
         if table in modified_query and f't_p7891941_voice_ai_agent_1.{table}' not in modified_query:
@@ -254,10 +269,10 @@ def download_telegram_file(bot_token: str, file_id: str) -> bytes:
 # ============================================================================
 
 def parse_receipt_with_ai(text: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Parse receipt using OpenAI"""
-    openai_key = get_openai_key()
-    if not openai_key:
-        raise ValueError("OPENAI_API_KEY not configured")
+    """Parse receipt using GPTunnel API"""
+    ai_settings = get_ai_settings()
+    if not ai_settings or not ai_settings.get('gptunnel_key'):
+        raise ValueError("GPTunnel API key not configured")
     
     system_prompt = """Ты ассистент для создания чеков. Извлекай из текста:
 1. Товары/услуги (name, price, quantity)
@@ -277,7 +292,7 @@ def parse_receipt_with_ai(text: str, context: Optional[Dict[str, Any]] = None) -
     if context:
         user_message = f"Контекст:\n{json.dumps(context, ensure_ascii=False)}\n\nСообщение:\n{text}"
     
-    url = "https://api.openai.com/v1/chat/completions"
+    url = "https://gptunnel.ru/v1/chat/completions"
     data = json.dumps({
         "model": "gpt-4o-mini",
         "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
@@ -285,7 +300,10 @@ def parse_receipt_with_ai(text: str, context: Optional[Dict[str, Any]] = None) -
         "temperature": 0.3
     }).encode('utf-8')
     
-    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {openai_key}'})
+    req = urllib.request.Request(url, data=data, headers={
+        'Content-Type': 'application/json', 
+        'Authorization': f'Bearer {ai_settings["gptunnel_key"]}'
+    })
     with urllib.request.urlopen(req) as response:
         result = json.loads(response.read().decode('utf-8'))
     
@@ -296,22 +314,25 @@ def parse_receipt_with_ai(text: str, context: Optional[Dict[str, Any]] = None) -
     return parsed_data
 
 
-def transcribe_voice_with_whisper(audio_bytes: bytes) -> str:
-    """Transcribe voice using OpenAI Whisper"""
-    openai_key = get_openai_key()
-    if not openai_key:
-        raise ValueError("OPENAI_API_KEY not configured")
+def transcribe_voice_with_yandex(audio_bytes: bytes) -> str:
+    """Transcribe voice using Yandex SpeechKit"""
+    ai_settings = get_ai_settings()
+    if not ai_settings or not ai_settings.get('yandex_key'):
+        raise ValueError("Yandex SpeechKit API key not configured")
     
-    url = "https://api.openai.com/v1/audio/transcriptions"
-    boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW'
-    body = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="voice.ogg"\r\nContent-Type: audio/ogg\r\n\r\n').encode('utf-8')
-    body += audio_bytes
-    body += f'\r\n--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\ngpt-4o-audio-preview\r\n--{boundary}--\r\n'.encode('utf-8')
+    url = "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize"
+    params = "?lang=ru-RU&format=oggopus&sampleRateHertz=48000"
     
-    req = urllib.request.Request(url, data=body, headers={'Authorization': f'Bearer {openai_key}', 'Content-Type': f'multipart/form-data; boundary={boundary}'})
+    req = urllib.request.Request(
+        url + params,
+        data=audio_bytes,
+        headers={'Authorization': f'Api-Key {ai_settings["yandex_key"]}'}
+    )
+    
     with urllib.request.urlopen(req) as response:
         result = json.loads(response.read().decode('utf-8'))
-    return result.get('text', '')
+    
+    return result.get('result', '')
 
 
 # ============================================================================
@@ -363,7 +384,7 @@ def handle_voice_message(message: Dict[str, Any], bot_token: str) -> Dict[str, A
         voice = message['voice']
         file_id = voice['file_id']
         audio_data = download_telegram_file(bot_token, file_id)
-        transcribed_text = transcribe_voice_with_whisper(audio_data)
+        transcribed_text = transcribe_voice_with_yandex(audio_data)
         return {'text': transcribed_text}
     except Exception as e:
         print(f"[ERROR] Voice transcription failed: {e}")
