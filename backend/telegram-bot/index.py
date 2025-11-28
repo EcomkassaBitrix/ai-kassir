@@ -1488,17 +1488,19 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             provider_name = receipt_data.get('payment_provider_name', '')
             
             if payment_link_enabled and provider_name:
-                group_text = f"📄 <b>Тип документа</b>\n\n✅ Сейчас: <b>Платежная ссылка</b>\nПровайдер: <b>{provider_name}</b>\n\nВыбери параметр:"
+                # Currently: Payment link - allow switching to regular receipt
+                group_text = f"📄 <b>Тип документа</b>\n\n✅ Сейчас: <b>Платежная ссылка</b>\nПровайдер: <b>{provider_name}</b>\n\nВыбери действие:"
                 group_buttons = [
-                    [{"text": "🧾 Чек", "callback_data": f"set_document_receipt_{preview_id}"}],
+                    [{"text": "🧾 Переключить на обычный чек", "callback_data": f"set_document_receipt_{preview_id}"}],
                     [{"text": "🔗 Изменить провайдера", "callback_data": f"edit_payment_link_{preview_id}"}],
+                    [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
                     [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
                 ]
             else:
-                group_text = "📄 <b>Тип документа</b>\n\nВыбери параметр:"
+                # Currently: Regular receipt - allow switching to payment link
+                group_text = "📄 <b>Тип документа</b>\n\n✅ Сейчас: <b>Обычный чек</b>\n\nВыбери действие:"
                 group_buttons = [
-                    [{"text": "🧾 Чек", "callback_data": f"show_receipt_{preview_id}"}],
-                    [{"text": "🔗 Ссылка на оплату", "callback_data": f"edit_payment_link_{preview_id}"}],
+                    [{"text": "🔗 Переключить на платежную ссылку", "callback_data": f"edit_payment_link_{preview_id}"}],
                     [{"text": "🔄 Тип операции", "callback_data": f"edit_operation_type_{preview_id}"}],
                     [{"text": "« Назад", "callback_data": f"edit_{preview_id}"}]
                 ]
