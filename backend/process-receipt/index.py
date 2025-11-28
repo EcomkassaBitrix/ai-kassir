@@ -389,8 +389,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     text_lower = user_message.lower().strip()
     
+    # CRITICAL: Extract context from settings (passed from telegram-bot)
     context_message = settings.get('context_message', '')
     has_context = bool(context_message)
+    
+    # Debug: log context state
+    if has_context:
+        print(f"[DEBUG] Context message found: '{context_message}'")
+    else:
+        print(f"[DEBUG] No context message (settings.context_message: '{settings.get('context_message', 'NOT SET')}')")
     
     irrelevant_keywords = [
         'привет', 'здравствуй', 'добрый', 'доброе', 'hello', 'hi', 'hey',
@@ -408,7 +415,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     has_copy_request = bool(re.search(r'\d{8,}', user_message)) and any(keyword in text_lower for keyword in ['копи', 'повтор', 'дубл', 'еще', 'ещё'])
     
+    # CRITICAL: Check irrelevant keywords ONLY if no context (don't block short messages with context)
     if not has_receipt_keywords and not has_context and not has_copy_request:
+        # Check for irrelevant keywords (greetings, jokes, etc.)
         for keyword in irrelevant_keywords:
             if keyword in text_lower:
                 print(f"[DEBUG] Irrelevant request blocked: '{user_message}' contains '{keyword}'")
@@ -424,6 +433,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     })
                 }
         
+        # Check for too short messages ONLY if no context
         if len(text_lower) < 10:
             print(f"[DEBUG] Too short message without receipt keywords and no context: '{user_message}'")
             return {
@@ -436,6 +446,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'error': 'Привет! 👋 Я помогаю создавать чеки.\n\nУкажи товар, цену и email клиента.\n\nНапример:\n• Кофе 200₽ test@mail.ru\n• Стрижка 1500₽'
                 })
             }
+    
+    # CRITICAL: If we have context, allow short messages (e.g., "кофе" after "сделай чек 10 руб")
+    if has_context:
+        print(f"[DEBUG] Context found: '{context_message}', allowing short message: '{user_message}'")
     
     has_ecomkassa = (settings.get('ecomkassa_login') or settings.get('username')) and \
                     (settings.get('ecomkassa_password') or settings.get('password')) and \

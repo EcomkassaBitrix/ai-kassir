@@ -807,11 +807,18 @@ def call_process_receipt_backend(user_message: str, user_id: str, chat_id: int =
             if chat_id and result.get('error') and not result.get('success'):
                 error_msg = result.get('error', '').lower()
                 # Check if AI is asking for product name, price, or other missing data
-                if any(keyword in error_msg for keyword in ['что продаёшь', 'укажи', 'не хватает', 'название']):
-                    print(f"[DEBUG] AI asking for more info - saving context: '{user_message}'")
+                # CRITICAL: Expanded keywords to catch all AI prompts for missing data
+                context_keywords = [
+                    'что продаёшь', 'укажи', 'не хватает', 'название', 
+                    'товар', 'услуг', 'цен', 'email', 'почт',
+                    'what are you selling', 'specify', 'missing', 'name'
+                ]
+                if any(keyword in error_msg for keyword in context_keywords):
+                    print(f"[DEBUG] AI asking for more info (found keyword in error) - saving context: '{user_message}'")
                     save_context_for_chat(chat_id, user_message)
                 else:
                     # Clear context if error is not about missing data
+                    print(f"[DEBUG] Error not about missing data, clearing context")
                     clear_context_for_chat(chat_id)
             elif chat_id and result.get('success'):
                 # Clear context on successful receipt creation
