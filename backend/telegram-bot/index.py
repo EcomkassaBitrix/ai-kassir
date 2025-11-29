@@ -812,7 +812,7 @@ def call_process_receipt_backend(user_message: str, user_id: str, chat_id: int =
                 # CRITICAL: Expanded keywords to catch all AI prompts for missing data
                 # NOTE: Use 'е' instead of 'ё' because error_msg is normalized
                 context_keywords = [
-                    'что продаеш', 'укажи', 'не хватает', 'название', 
+                    'что продаешь', 'что продаеш', 'укажи', 'не хватает', 'название', 
                     'товар', 'услуг', 'цен', 'email', 'почт',
                     'what are you selling', 'specify', 'missing', 'name'
                 ]
