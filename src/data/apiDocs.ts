@@ -129,6 +129,70 @@ export const apiMethods: ApiMethod[] = [
     ]
   },
   {
+    id: 'mobile-auth',
+    name: 'mobile-auth',
+    httpMethods: ['POST', 'OPTIONS'],
+    description:
+      'Вход мобильного приложения по логину/паролю кассы Ecomkassa. Получает токен у Ecomkassa, сохраняет логин/пароль пользователя (как в user-settings) и связывает токен с каноническим user_id (ecom_{login}). Возвращённый токен используется дальше во всех запросах к mobile-proxy.',
+    requestFields: [
+      { name: 'login', type: 'string', required: true, description: 'Логин кассы Ecomkassa' },
+      { name: 'password', type: 'string', required: true, description: 'Пароль кассы Ecomkassa' }
+    ],
+    requestExample: `{
+  "login": "ecomkassa_login",
+  "password": "ecomkassa_password"
+}`,
+    responseExample: `{
+  "token": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "user_id": "ecom_ecomkassa_login"
+}`,
+    errors: [
+      { code: 400, description: 'нет login/password, некорректный JSON' },
+      { code: 401, description: 'неверные учётные данные Ecomkassa' },
+      { code: 405, description: 'метод не POST' },
+      { code: 500, description: 'сбой сети/запроса к Ecomkassa, БД не настроена' }
+    ],
+    notes: 'Токен живёт 24 часа. Дальнейшие запросы идут через mobile-proxy — повторный вызов mobile-auth не нужен, пока токен действителен.'
+  },
+  {
+    id: 'mobile-proxy',
+    name: 'mobile-proxy',
+    httpMethods: ['POST', 'OPTIONS'],
+    auth: 'X-Ecomkassa-Token',
+    description:
+      'Основной эндпоинт для мобильного приложения — прокси запросов к Ecomkassa по токену, полученному в mobile-auth. По токену находит пользователя и его сохранённый пароль. Если Ecomkassa отвечает 401 (токен протух), автоматически получает новый токен и повторяет запрос — мобилка ошибку не видит.',
+    headers: [
+      { name: 'X-Ecomkassa-Token', type: 'string', required: true, description: 'Токен, полученный в mobile-auth (или обновлённый ранее через X-New-Ecomkassa-Token)' }
+    ],
+    requestFields: [
+      { name: 'endpoint', type: 'string', required: false, description: 'По умолчанию /fiscalorder/v5/default_group/sell' },
+      { name: 'method', type: 'string', required: false, description: 'GET или POST, по умолчанию GET' },
+      { name: 'payload', type: 'object', required: false, description: 'Тело запроса к кассе (обязательно для POST)' }
+    ],
+    requestExample: `{
+  "endpoint": "/fiscalorder/v5/{group_code}/sell",
+  "method": "POST",
+  "payload": { "...": "items, payments, client, company" }
+}`,
+    responseExample: `// прямой ответ Ecomkassa + qr_code, если есть платёжная ссылка
+{
+  "code": 0,
+  "uuid": "...",
+  "invoice_payload": { "link": "https://..." },
+  "qr_code": "data:image/png;base64,..."
+}
+
+// заголовок ответа добавляется, только если токен был обновлён под капотом
+X-New-Ecomkassa-Token: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
+    errors: [
+      { code: 400, description: 'некорректный JSON' },
+      { code: 401, description: 'токен неизвестен, или не удалось обновить протухший токен — нужен повторный вход через mobile-auth' },
+      { code: 405, description: 'метод не POST' },
+      { code: 500, description: 'сбой сети/запроса к Ecomkassa, БД не настроена' }
+    ],
+    notes: 'Если в ответе присутствует заголовок X-New-Ecomkassa-Token — мобильное приложение должно заменить им токен для последующих запросов.'
+  },
+  {
     id: 'get-receipts',
     name: 'get-receipts',
     httpMethods: ['GET', 'OPTIONS'],
