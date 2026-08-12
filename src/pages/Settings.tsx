@@ -59,6 +59,10 @@ const Settings = () => {
             <Save className="mr-2 h-4 w-4" />
             Сохранить настройки
           </Button>
+
+          <Button variant="outline" className="w-full" onClick={() => navigate('/api-docs')}>
+            API документация
+          </Button>
         </div>
       </div>
     </div>
