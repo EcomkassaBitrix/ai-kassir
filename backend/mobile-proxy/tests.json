@@ -1,0 +1,21 @@
+{
+  "tests": [
+    {
+      "name": "Missing token",
+      "method": "POST",
+      "path": "/",
+      "body": {"endpoint": "/api/mobile/v1/profile/firm"},
+      "expectedStatus": 401,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Invalid method",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 405,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}
