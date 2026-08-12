@@ -31,7 +31,7 @@ const FieldsTable = ({
         <tbody>
           {fields.map((f) => (
             <tr key={f.name} className="border-b last:border-0">
-              <td className="px-3 py-2 font-mono text-xs whitespace-nowrap align-top">{f.name}</td>
+              <td className="px-3 py-2 font-mono text-xs whitespace-nowrap align-top text-foreground">{f.name}</td>
               <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap align-top">{f.type}</td>
               <td className="px-3 py-2 align-top">
                 {f.required ? (
@@ -40,7 +40,7 @@ const FieldsTable = ({
                   <Badge variant="outline" className="text-[10px]">опционально</Badge>
                 )}
               </td>
-              <td className="px-3 py-2 text-xs align-top">{f.description}</td>
+              <td className="px-3 py-2 text-xs align-top text-foreground">{f.description}</td>
             </tr>
           ))}
         </tbody>
@@ -53,14 +53,14 @@ const ApiDocs = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white p-4">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-purple-950/20 p-4">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center gap-4 mb-2">
           <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
             <Icon name="ArrowLeft" size={20} />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">API документация</h1>
+            <h1 className="text-2xl font-bold text-foreground">API документация</h1>
             <p className="text-sm text-muted-foreground">
               Описание всех backend-методов проекта: что принимают и что возвращают
             </p>
@@ -73,7 +73,7 @@ const ApiDocs = () => {
             <a
               key={m.id}
               href={`#${m.id}`}
-              className="text-xs font-mono px-2.5 py-1 rounded-md bg-white border hover:border-primary hover:text-primary transition-colors"
+              className="text-xs font-mono px-2.5 py-1 rounded-md bg-card border text-muted-foreground hover:border-primary hover:text-primary transition-colors"
             >
               {m.name}
             </a>
@@ -84,7 +84,7 @@ const ApiDocs = () => {
           {apiMethods.map((method) => (
             <Card key={method.id} id={method.id} className="p-6 scroll-mt-4">
               <div className="flex flex-wrap items-center gap-2 mb-2">
-                <h2 className="text-lg font-bold font-mono">{method.name}</h2>
+                <h2 className="text-lg font-bold font-mono text-foreground">{method.name}</h2>
                 {method.httpMethods.map((hm) => (
                   <span
                     key={hm}
@@ -154,7 +154,7 @@ const ApiDocs = () => {
                 </div>
 
                 {method.notes && (
-                  <div className="flex items-start gap-2 text-xs bg-blue-50 text-blue-800 rounded-md p-3">
+                  <div className="flex items-start gap-2 text-xs bg-primary/10 text-primary rounded-md p-3">
                     <Icon name="Info" size={14} className="mt-0.5 shrink-0" />
                     <span>{method.notes}</span>
                   </div>
@@ -166,14 +166,14 @@ const ApiDocs = () => {
 
         {/* Справочники значений */}
         <Card className="p-6 mt-6">
-          <h2 className="text-lg font-bold mb-4">Общие справочники значений</h2>
+          <h2 className="text-lg font-bold mb-4 text-foreground">Общие справочники значений</h2>
           <div className="grid sm:grid-cols-2 gap-4">
             {commonReferences.map((ref) => (
               <div key={ref.title}>
                 <h4 className="text-sm font-semibold text-muted-foreground mb-2">{ref.title}</h4>
                 <ul className="text-xs space-y-1">
                   {ref.items.map((item) => (
-                    <li key={item} className="font-mono bg-muted/50 rounded px-2 py-1">
+                    <li key={item} className="font-mono bg-muted/50 rounded px-2 py-1 text-foreground">
                       {item}
                     </li>
                   ))}
