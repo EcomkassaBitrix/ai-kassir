@@ -10,6 +10,12 @@ export interface ApiError {
   description: string;
 }
 
+export interface ApiFlowStep {
+  title: string;
+  description: string;
+  example: string;
+}
+
 export interface ApiMethod {
   id: string;
   name: string;
@@ -23,6 +29,7 @@ export interface ApiMethod {
   responseExample: string;
   errors: ApiError[];
   notes?: string;
+  flowSteps?: ApiFlowStep[];
 }
 
 export const apiMethods: ApiMethod[] = [
@@ -92,7 +99,53 @@ export const apiMethods: ApiMethod[] = [
       { code: 400, description: 'пустое message, слишком короткий запрос без контекста, товар не указан для платёжной ссылки' },
       { code: 405, description: 'метод не POST' }
     ],
-    notes: 'Типы платежей (payments[].type): 0=наличные, 1=безнал, 2=предоплата, 3=кредит, 4=иная форма, 5/6=расширенный аванс/кредит.'
+    notes: 'Типы платежей (payments[].type): 0=наличные, 1=безнал, 2=предоплата, 3=кредит, 4=иная форма, 5/6=расширенный аванс/кредит.',
+    flowSteps: [
+      {
+        title: 'Шаг 1 — распознавание (форма предпросмотра)',
+        description:
+          'Отдельного метода "распознать чек" нет — это тот же process-receipt с флагом preview_only=true. ИИ разбирает текст пользователя и возвращает структуру чека, ничего не отправляя в кассу. Именно этот ответ показывается пользователю как форма проверки: товары, сумма, email, способ оплаты — всё можно поправить перед отправкой.',
+        example: `POST /process-receipt
+{
+  "message": "Кофе 200₽ test@mail.ru",
+  "operation_type": "sell",
+  "preview_only": true
+}
+
+→ 200 OK
+{
+  "success": true,
+  "preview": true,
+  "receipt": {
+    "items": [{ "name": "Кофе", "price": 200, "quantity": 1, "measure": "шт" }],
+    "total": 200,
+    "client": { "email": "test@mail.ru" }
+  }
+}`
+      },
+      {
+        title: 'Шаг 2 — подтверждение (отправка в кассу)',
+        description:
+          'После того как пользователь проверил или вручную отредактировал форму, приложение вызывает тот же метод повторно с preview_only=false. Если что-то было изменено вручную — исправленные данные передаются в edited_data, и сервер использует именно их вместо повторного распознавания.',
+        example: `POST /process-receipt
+{
+  "message": "Кофе 200₽ test@mail.ru",
+  "operation_type": "sell",
+  "preview_only": false,
+  "edited_data": {
+    "items": [{ "name": "Кофе", "price": 250, "quantity": 1 }],
+    "client": { "email": "test@mail.ru" }
+  }
+}
+
+→ 200 OK
+{
+  "success": true,
+  "uuid": "a1b2c3d4-...",
+  "permalink": "https://receipts.ecomkassa.ru/..."
+}`
+      }
+    ]
   },
   {
     id: 'ecomkassa-proxy',

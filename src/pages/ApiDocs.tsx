@@ -104,6 +104,23 @@ const ApiDocs = () => {
               <p className="text-sm text-muted-foreground mb-4">{method.description}</p>
 
               <div className="space-y-4">
+                {method.flowSteps && method.flowSteps.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-muted-foreground mb-2">
+                      Сценарий "форма распознавания" (preview → подтверждение)
+                    </h4>
+                    <div className="space-y-3">
+                      {method.flowSteps.map((step, idx) => (
+                        <div key={idx} className="rounded-lg border bg-muted/30 p-3">
+                          <p className="text-sm font-semibold text-foreground mb-1">{step.title}</p>
+                          <p className="text-xs text-muted-foreground mb-2">{step.description}</p>
+                          <CodeBlock code={step.example} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {method.headers && method.headers.length > 0 && (
                   <FieldsTable title="Заголовки" fields={method.headers} />
                 )}
