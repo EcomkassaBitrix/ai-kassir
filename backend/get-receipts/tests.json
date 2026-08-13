@@ -1,8 +1,14 @@
 {
   "tests": [
     {
-      "name": "Test get receipts returns success",
+      "name": "Test get receipts without X-User-Id fails",
       "method": "GET",
+      "expectedStatus": 400
+    },
+    {
+      "name": "Test get receipts with X-User-Id returns success",
+      "method": "GET",
+      "headers": { "X-User-Id": "test_user" },
       "expectedStatus": 200
     },
     {

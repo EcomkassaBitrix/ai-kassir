@@ -196,7 +196,10 @@ X-New-Ecomkassa-Token: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
     id: 'get-receipts',
     name: 'get-receipts',
     httpMethods: ['GET', 'OPTIONS'],
-    description: 'История созданных чеков с пагинацией.',
+    description: 'История созданных чеков текущего пользователя с пагинацией.',
+    headers: [
+      { name: 'X-User-Id', type: 'string', required: true, description: 'Обязателен — история отдаётся только по чекам этого пользователя' }
+    ],
     queryParams: [
       { name: 'limit', type: 'number', required: false, description: 'Сколько чеков вернуть (по умолчанию 50)' },
       { name: 'offset', type: 'number', required: false, description: 'Смещение для пагинации (по умолчанию 0)' }
@@ -225,6 +228,7 @@ X-New-Ecomkassa-Token: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
   "offset": 0
 }`,
     errors: [
+      { code: 400, description: 'нет заголовка X-User-Id' },
       { code: 405, description: 'метод не GET' },
       { code: 500, description: 'БД не настроена / ошибка запроса' }
     ]

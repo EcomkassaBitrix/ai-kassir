@@ -46,9 +46,8 @@ const History = ({ setRepeatCommand }: HistoryProps) => {
       const data = await response.json();
 
       if (data.success) {
-        const userReceipts = data.receipts.filter((receipt: Receipt) => receipt.user_id === userId);
-        setReceipts(userReceipts);
-        setTotal(userReceipts.length);
+        setReceipts(data.receipts);
+        setTotal(data.total);
       } else {
         toast.error('Ошибка загрузки истории');
       }

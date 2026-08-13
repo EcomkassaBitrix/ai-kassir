@@ -33,6 +33,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({'error': 'Method not allowed'})
         }
     
+    headers_in = event.get('headers') or {}
+    user_id = headers_in.get('X-User-Id') or headers_in.get('x-user-id', '')
+    
+    if not user_id:
+        return {
+            'statusCode': 400,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'error': 'X-User-Id header is required'})
+        }
+    
     query_params = event.get('queryStringParameters') or {}
     limit = int(query_params.get('limit', '50'))
     offset = int(query_params.get('offset', '0'))
@@ -57,15 +70,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         cursor.execute(
-            f"SELECT id, external_id, user_id, user_message, operation_type, items, total, "
-            f"payment_type, payments, customer_email, status, demo_mode, created_at, uuid "
-            f"FROM receipts ORDER BY created_at DESC LIMIT {limit} OFFSET {offset}"
+            "SELECT id, external_id, user_id, user_message, operation_type, items, total, "
+            "payment_type, payments, customer_email, status, demo_mode, created_at, uuid "
+            "FROM receipts WHERE user_id = %s ORDER BY created_at DESC LIMIT %s OFFSET %s",
+            (user_id, limit, offset)
         )
-        
         
         receipts = cursor.fetchall()
         
-        cursor.execute("SELECT COUNT(*) as total FROM receipts")
+        cursor.execute("SELECT COUNT(*) as total FROM receipts WHERE user_id = %s", (user_id,))
         total_count = cursor.fetchone()['total']
         
         cursor.close()
