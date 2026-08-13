@@ -12,6 +12,51 @@ TOKEN_URL = 'https://app.ecomkassa.ru/fiscalorder/v5/getToken'
 TOKEN_TTL_HOURS = 24
 
 
+def migrate_specific_user(cur, conn, old_user_id: str, new_user_id: str) -> None:
+    '''Move one anonymous/foreign user_id account (settings + receipts + telegram links) into canonical ecom_{login} id'''
+    if not old_user_id or old_user_id == new_user_id:
+        return
+
+    cur.execute("UPDATE receipts SET user_id = %s WHERE user_id = %s", (new_user_id, old_user_id))
+
+    cur.execute("SELECT 1 FROM user_settings WHERE user_id = %s", (new_user_id,))
+    if cur.fetchone():
+        cur.execute(
+            "UPDATE user_settings AS c SET "
+            "group_code = COALESCE(NULLIF(c.group_code, ''), o.group_code), "
+            "inn = COALESCE(NULLIF(c.inn, ''), o.inn), "
+            "sno = COALESCE(NULLIF(c.sno, ''), o.sno), "
+            "default_vat = COALESCE(NULLIF(c.default_vat, ''), o.default_vat), "
+            "company_email = COALESCE(NULLIF(c.company_email, ''), o.company_email), "
+            "payment_address = COALESCE(NULLIF(c.payment_address, ''), o.payment_address), "
+            "active_ai_provider = COALESCE(NULLIF(c.active_ai_provider, ''), o.active_ai_provider), "
+            "gigachat_auth_key = COALESCE(NULLIF(c.gigachat_auth_key, ''), o.gigachat_auth_key), "
+            "yandexgpt_api_key = COALESCE(NULLIF(c.yandexgpt_api_key, ''), o.yandexgpt_api_key), "
+            "yandexgpt_folder_id = COALESCE(NULLIF(c.yandexgpt_folder_id, ''), o.yandexgpt_folder_id), "
+            "gptunnel_api_key = COALESCE(NULLIF(c.gptunnel_api_key, ''), o.gptunnel_api_key) "
+            "FROM user_settings AS o "
+            "WHERE c.user_id = %s AND o.user_id = %s",
+            (new_user_id, old_user_id)
+        )
+        cur.execute("DELETE FROM user_settings WHERE user_id = %s", (old_user_id,))
+    else:
+        cur.execute("UPDATE user_settings SET user_id = %s WHERE user_id = %s", (new_user_id, old_user_id))
+
+    cur.execute("UPDATE telegram_links SET user_id = %s WHERE user_id = %s", (new_user_id, old_user_id))
+    conn.commit()
+
+
+def merge_orphan_accounts(cur, conn, canonical_user_id: str, login: str) -> None:
+    '''Find any other user_id rows tied to the same Ecomkassa login (other browser/device/Telegram) and merge them in'''
+    cur.execute(
+        "SELECT user_id FROM user_settings WHERE ecomkassa_login = %s AND user_id != %s",
+        (login, canonical_user_id)
+    )
+    orphan_ids = [row[0] for row in cur.fetchall()]
+    for orphan_id in orphan_ids:
+        migrate_specific_user(cur, conn, orphan_id, canonical_user_id)
+
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     Business: Mobile app login via Ecomkassa login/password, returns Ecomkassa token linked to user_id
@@ -131,6 +176,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         "updated_at = CURRENT_TIMESTAMP",
         (token, user_id, expires_at)
     )
+
+    # Auto-merge: pull in any other accounts (web/Telegram/other devices) tied to
+    # this same Ecomkassa login into the canonical ecom_{login} account
+    merge_orphan_accounts(cur, conn, user_id, login)
 
     conn.commit()
     cur.close()
