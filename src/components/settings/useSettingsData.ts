@@ -276,6 +276,17 @@ export const useSettingsData = () => {
       if (!response.ok) {
         throw new Error('Failed to save settings');
       }
+
+      // Backend may fold this browser's local id into the canonical ecom_{login}
+      // account (e.g. first save with a login on a fresh device) — pick up the
+      // real settings + user_id so this browser stays in sync with the server.
+      const data = await response.json();
+      if (data.user_id && data.user_id !== userId) {
+        setEcomkassaLogin(settingsToSave.ecomkassa_login);
+      }
+      if (data.settings) {
+        setSettings(prev => ({ ...prev, ...data.settings, available_shops: prev.available_shops }));
+      }
     } catch (error) {
       console.error('[Settings] Failed to save to server:', error);
       throw error;

@@ -189,23 +189,44 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         body_data = json.loads(event.get('body', '{}'))
         settings = body_data.get('settings', {})
         
-        save_user_settings(user_id, settings, conn)
+        login = settings.get('ecomkassa_login', '')
+        canonical_user_id = f'ecom_{login}' if login else None
+        target_user_id = user_id
+        cur = conn.cursor()
+        
+        if canonical_user_id and canonical_user_id != user_id:
+            # CRITICAL: the request came in under a non-canonical id (e.g. a fresh
+            # browser/device with cleared storage that just had the login typed in).
+            # Never blindly save this — it could wipe a real, already-filled canonical
+            # account. Instead: load the real canonical settings, keep them for any
+            # field the incoming request left blank, fold this request's own account
+            # into canonical, and save under the canonical id.
+            existing_canonical = get_user_settings(canonical_user_id, conn)
+            if existing_canonical:
+                merged = dict(existing_canonical)
+                for key, value in settings.items():
+                    if value not in (None, ''):
+                        merged[key] = value
+                settings = merged
+            
+            migrate_specific_user(cur, conn, user_id, canonical_user_id)
+            target_user_id = canonical_user_id
+        
+        save_user_settings(target_user_id, settings, conn)
         
         # Auto-merge: if this account has an Ecomkassa login, silently pull in any other
         # accounts (from other browsers/devices/Telegram) tied to the same login
-        login = settings.get('ecomkassa_login', '')
         if login:
-            cur = conn.cursor()
-            merge_orphan_accounts(cur, conn, user_id, login)
-            cur.close()
+            merge_orphan_accounts(cur, conn, target_user_id, login)
         
+        cur.close()
         conn.close()
         
         return {
             'statusCode': 200,
             'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
             'isBase64Encoded': False,
-            'body': json.dumps({'status': 'saved', 'settings': settings})
+            'body': json.dumps({'status': 'saved', 'settings': settings, 'user_id': target_user_id})
         }
     
     conn.close()

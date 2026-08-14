@@ -55,6 +55,25 @@
         "status": "saved"
       },
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST with ecomkassa_login from fresh browser id redirects to canonical account",
+      "method": "POST",
+      "path": "/",
+      "headers": {
+        "X-User-Id": "user_freshdevice999"
+      },
+      "body": {
+        "settings": {
+          "ecomkassa_login": "test_canonical_login_qa"
+        }
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "status": "saved",
+        "user_id": "ecom_test_canonical_login_qa"
+      },
+      "bodyMatcher": "partial"
     }
   ]
 }
