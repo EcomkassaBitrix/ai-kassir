@@ -180,10 +180,35 @@ export const useSettingsData = () => {
       
       setEcomkassaLogin(settings.ecomkassa_login);
 
+      // CRITICAL: this browser may be "empty" (new device/cleared cache) while the
+      // account already has real saved settings on the server under ecom_{login}.
+      // Load those existing settings FIRST so we never overwrite them with blank
+      // local state — only merge in the freshly loaded org data from Ecomkassa.
+      let baseSettings = settings;
+      try {
+        const canonicalUserId = `ecom_${settings.ecomkassa_login}`;
+        const existingResponse = await fetch('https://functions.poehali.dev/e8972b95-5a58-4023-8f81-5385338d4590', {
+          headers: { 'X-User-Id': canonicalUserId }
+        });
+        if (existingResponse.ok) {
+          const existingData = await existingResponse.json();
+          if (existingData.settings) {
+            baseSettings = {
+              ...settings,
+              ...existingData.settings,
+              ecomkassa_login: settings.ecomkassa_login,
+              ecomkassa_password: settings.ecomkassa_password
+            };
+          }
+        }
+      } catch (error) {
+        console.error('[Settings] Failed to load existing account settings:', error);
+      }
+
       const updatedSettings = {
-        ...settings,
-        inn: taxIdentity,
-        sno: taxVariant,
+        ...baseSettings,
+        inn: taxIdentity || baseSettings.inn,
+        sno: taxVariant || baseSettings.sno,
         available_shops: shops
       };
 
