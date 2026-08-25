@@ -1,0 +1,55 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS returns CORS headers",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "POST without action is rejected",
+      "method": "POST",
+      "path": "/",
+      "body": {},
+      "expectedStatus": 400,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST issue without X-Partner-Secret is rejected",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "issue",
+        "ecomkassa_login": "test",
+        "ecomkassa_password": "test"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST exchange without token is rejected",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "exchange"
+      },
+      "expectedStatus": 400,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST exchange with unknown token is rejected",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "exchange",
+        "token": "nonexistent-token-value-12345"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

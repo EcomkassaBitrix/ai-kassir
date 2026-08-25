@@ -9,7 +9,7 @@ import { useReceiptHandlers } from '@/hooks/useReceiptHandlers';
 import { setEcomkassaLogin } from '@/utils/userId';
 import Icon from '@/components/ui/icon';
 
-const EMBED_SESSION_URL = 'https://functions.poehali.dev/PLACEHOLDER_EMBED_SESSION';
+const PARTNER_EMBED_URL = 'https://functions.poehali.dev/10219b97-9c66-4c02-b8a3-939f2d6e06c6';
 
 type EmbedStatus = 'loading' | 'ready' | 'error';
 
@@ -35,10 +35,10 @@ const Embed = () => {
 
     const exchangeToken = async () => {
       try {
-        const response = await fetch(EMBED_SESSION_URL, {
+        const response = await fetch(PARTNER_EMBED_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token })
+          body: JSON.stringify({ action: 'exchange', token })
         });
 
         const data = await response.json();
