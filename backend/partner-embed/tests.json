@@ -50,6 +50,29 @@
       "expectedStatus": 401,
       "expectedBody": {"error": "string"},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST issue_from_token without ecomkassa_token is rejected",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "issue_from_token"
+      },
+      "expectedStatus": 400,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST issue_from_token with unknown ecomkassa_token is rejected",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "issue_from_token",
+        "ecomkassa_token": "nonexistent-ecomkassa-token-12345"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
     }
   ]
 }

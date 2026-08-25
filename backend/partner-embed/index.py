@@ -103,6 +103,64 @@ def json_response(status: int, payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def handle_issue_from_token(body_data: Dict[str, Any]) -> Dict[str, Any]:
+    '''
+    Public, no-secret flow: partner frontend already holds a real Ecomkassa API token
+    obtained earlier via our own public mobile-auth endpoint (login+password once,
+    same as our mobile app login). It sends that token straight from the browser.
+    We look it up in our own ecomkassa_sessions table (populated by mobile-auth) —
+    if it is a token WE issued and it is not expired, the caller is proven to be the
+    real cashier owner, no partner secret required.
+    '''
+    ecomkassa_token = (body_data.get('ecomkassa_token') or '').strip()
+    partner_id = (body_data.get('partner_id') or 'default').strip()
+
+    if not ecomkassa_token:
+        return json_response(400, {'error': 'ecomkassa_token is required'})
+
+    if not re.match(r'^[A-Za-z0-9_.@-]{1,100}$', partner_id):
+        return json_response(400, {'error': 'Invalid partner_id format'})
+
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        return json_response(500, {'error': 'Database not configured'})
+
+    conn = psycopg2.connect(database_url)
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT user_id FROM ecomkassa_sessions WHERE token = %s AND expires_at > CURRENT_TIMESTAMP",
+        (ecomkassa_token,)
+    )
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return json_response(401, {'error': 'Токен недействителен или истёк, войдите заново'})
+
+    user_id = row[0]
+
+    embed_token = secrets.token_urlsafe(32)
+    expires_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=EMBED_TOKEN_TTL_SECONDS)
+
+    cur.execute(
+        "INSERT INTO embed_sessions (token, user_id, partner_id, expires_at) VALUES (%s, %s, %s, %s)",
+        (embed_token, user_id, partner_id, expires_at)
+    )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return json_response(200, {
+        'embed_token': embed_token,
+        'embed_path': f'/embed?token={embed_token}',
+        'expires_in': EMBED_TOKEN_TTL_SECONDS,
+        'user_id': user_id
+    })
+
+
 def handle_issue(body_data: Dict[str, Any], headers: Dict[str, Any]) -> Dict[str, Any]:
     '''
     Server-to-server: partner backend exchanges its secret + Ecomkassa login/password
@@ -235,12 +293,15 @@ def handle_exchange(body_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Combined partner-integration endpoint (two actions in one function to save
-    a function slot). Action "issue": partner LK backend exchanges X-Partner-Secret header
-    plus Ecomkassa login/password for a one-time embed token. Action "exchange": our own
-    /embed frontend page exchanges that token for the canonical user_id right after loading
-    inside the partner's iframe.
-    Args: event with httpMethod POST, body (action: "issue"|"exchange", plus action-specific fields)
+    Business: Combined partner-integration endpoint (three actions in one function to save
+    function slots). Action "issue": partner LK backend (server-to-server) exchanges its
+    X-Partner-Secret header plus Ecomkassa login/password for a one-time embed token.
+    Action "issue_from_token": public, no-secret flow — partner FRONTEND sends a real
+    Ecomkassa API token (obtained earlier via our public mobile-auth login) straight from
+    the browser; we validate it against our own ecomkassa_sessions table and issue an embed
+    token if it is genuine and not expired. Action "exchange": our own /embed frontend page
+    exchanges that embed token for the canonical user_id right after loading in the iframe.
+    Args: event with httpMethod POST, body (action: "issue"|"issue_from_token"|"exchange", plus action-specific fields)
     Returns: HTTP response with token/user data depending on requested action
     '''
     method: str = event.get('httpMethod', 'GET')
@@ -266,7 +327,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     if action == 'issue':
         return handle_issue(body_data, headers)
+    if action == 'issue_from_token':
+        return handle_issue_from_token(body_data)
     if action == 'exchange':
         return handle_exchange(body_data)
 
-    return json_response(400, {'error': 'Missing or invalid "action" field, expected "issue" or "exchange"'})
+    return json_response(400, {'error': 'Missing or invalid "action" field, expected "issue", "issue_from_token" or "exchange"'})

@@ -1,0 +1,1 @@
+ALTER TABLE ecomkassa_sessions ALTER COLUMN token TYPE VARCHAR(1024);
