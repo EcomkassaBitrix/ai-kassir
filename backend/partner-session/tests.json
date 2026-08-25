@@ -1,0 +1,22 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS returns CORS headers",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "POST without X-Partner-Secret is rejected",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "ecomkassa_login": "test",
+        "ecomkassa_password": "test"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -11,6 +11,7 @@ import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import AdminPanel from "./pages/AdminPanel";
 import ApiDocs from "./pages/ApiDocs";
+import Embed from "./pages/Embed";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +30,7 @@ const App = () => {
             <Route path="/settings" element={<Settings />} />
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/api-docs" element={<ApiDocs />} />
+            <Route path="/embed" element={<Embed />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
