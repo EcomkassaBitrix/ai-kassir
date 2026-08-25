@@ -508,6 +508,78 @@ X-New-Ecomkassa-Token: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
       { code: 500, description: 'БД не настроена' }
     ],
     notes: 'Если new_user_id уже занят, автоматически генерируется вариант с числовым суффиксом (conflict_resolved: true).'
+  },
+  {
+    id: 'partner-embed',
+    name: 'partner-embed',
+    httpMethods: ['POST', 'OPTIONS'],
+    auth: 'X-Partner-Secret',
+    description:
+      'Партнёрская интеграция: открыть чат ИИ-кассира внутри чужого личного кабинета (iframe/попап) с уже готовыми настройками пользователя, без ручного логина внутри окна. Один метод, два действия через поле action: "issue" (сервер партнёра получает одноразовый токен) и "exchange" (наша страница /embed меняет токен на доступ).',
+    headers: [
+      { name: 'X-Partner-Secret', type: 'string', required: true, description: 'Только для action=issue. Секретный ключ партнёра, выдаётся владельцем проекта ИИ-кассира' }
+    ],
+    requestFields: [
+      { name: 'action', type: 'string', required: true, description: '"issue" | "exchange"' },
+      { name: 'ecomkassa_login', type: 'string', required: true, description: 'Только для action=issue. Логин кассы Ecomkassa пользователя' },
+      { name: 'ecomkassa_password', type: 'string', required: true, description: 'Только для action=issue. Пароль кассы Ecomkassa пользователя' },
+      { name: 'partner_id', type: 'string', required: false, description: 'Только для action=issue. Метка вашей интеграции, по умолчанию "default"' },
+      { name: 'token', type: 'string', required: true, description: 'Только для action=exchange. Токен, полученный на шаге issue' }
+    ],
+    responseExample: `// action=issue → 200 OK
+{
+  "embed_token": "xxxxx...",
+  "embed_path": "/embed?token=xxxxx...",
+  "expires_in": 60,
+  "user_id": "ecom_sergey@ecomkassa.ru"
+}
+
+// action=exchange → 200 OK (вызывается автоматически страницей /embed)
+{
+  "user_id": "ecom_sergey@ecomkassa.ru",
+  "ecomkassa_login": "sergey@ecomkassa.ru"
+}`,
+    errors: [
+      { code: 400, description: 'нет action, нет ecomkassa_login/password (issue) или нет token (exchange)' },
+      { code: 401, description: 'неверный/отсутствующий X-Partner-Secret, неверный логин/пароль кассы, токен недействителен/уже использован/истёк' },
+      { code: 405, description: 'метод не POST' },
+      { code: 500, description: 'партнёрская интеграция не настроена (нет секрета на сервере) или БД недоступна' }
+    ],
+    notes: 'embed_token одноразовый и живёт всего 60 секунд — получайте его прямо перед открытием окна, не заранее. Шаг issue делает ТОЛЬКО ваш бэкенд (секрет никогда не должен попадать в браузер пользователя). Шаг exchange делает наша страница /embed автоматически при загрузке — вам его вызывать не нужно.',
+    flowSteps: [
+      {
+        title: 'Шаг 1 — ваш сервер получает одноразовый токен (issue)',
+        description:
+          'Когда пользователь в вашем личном кабинете нажимает "Открыть ИИ-кассира", ваш БЭКЕНД (не браузер!) делает серверный запрос с вашим секретным ключом и логином/паролем кассы этого пользователя. В ответ приходит embed_token и готовая ссылка embed_path.',
+        example: `POST https://functions.poehali.dev/10219b97-9c66-4c02-b8a3-939f2d6e06c6
+X-Partner-Secret: <ваш секретный ключ>
+Content-Type: application/json
+
+{
+  "action": "issue",
+  "ecomkassa_login": "sergey@ecomkassa.ru",
+  "ecomkassa_password": "пароль_кассы",
+  "partner_id": "my-crm"
+}
+
+→ 200 OK
+{
+  "embed_token": "kA8f...Yz",
+  "embed_path": "/embed?token=kA8f...Yz",
+  "expires_in": 60,
+  "user_id": "ecom_sergey@ecomkassa.ru"
+}`
+      },
+      {
+        title: 'Шаг 2 — открываете iframe/попап с готовым embed_path',
+        description:
+          'Ваш фронтенд получает embed_path от своего же бэкенда (не от нас напрямую) и сразу открывает его в iframe/модальном окне на домене нашего сервиса. Наша страница /embed сама обменяет токен на доступ (action=exchange) и покажет чат уже с настройками пользователя — ничего вводить не нужно.',
+        example: `<iframe
+  src="https://ваш-домен-ии-кассира.poehali.dev/embed?token=kA8f...Yz"
+  style="width: 100%; height: 600px; border: 0;"
+></iframe>`
+      }
+    ]
   }
 ];
 
