@@ -1,19 +1,38 @@
 {
   "tests": [
     {
-      "name": "Test receipt preview mode",
+      "name": "Test receipt preview mode with Ecomkassa connected",
       "method": "POST",
       "body": {
         "message": "Создай чек на хлеб за 50 рублей и молоко за 80 рублей",
         "preview_only": true,
         "settings": {
-          "company_email": "test@example.com"
+          "company_email": "test@example.com",
+          "ecomkassa_login": "test_login",
+          "ecomkassa_password": "test_password",
+          "group_code": "990"
         }
       },
       "expectedStatus": 200,
       "expectedBody": {
         "success": true,
         "preview": true
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Test preview mode blocked without Ecomkassa credentials",
+      "method": "POST",
+      "body": {
+        "message": "Создай чек на хлеб за 50 рублей",
+        "preview_only": true,
+        "settings": {
+          "company_email": "test@example.com"
+        }
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "missing_integration": "ecomkassa"
       },
       "bodyMatcher": "partial"
     },

@@ -411,7 +411,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         except Exception as e:
             print(f"[WARNING] Failed to get admin AI settings: {e}")
     
-    if not has_ecomkassa and not preview_only:
+    # CRITICAL: This check must run BEFORE preview too — every chat message from the
+    # frontend is sent with preview_only=True, so gating this only on "not preview_only"
+    # let unauthenticated users burn AI calls and get confusing generic errors instead
+    # of being told to connect their Ecomkassa account.
+    if not has_ecomkassa:
         return {
             'statusCode': 400,
             'headers': {
@@ -425,7 +429,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             })
         }
     
-    if (not has_admin_ai or not active_ai_provider) and not preview_only:
+    if not has_admin_ai or not active_ai_provider:
         return {
             'statusCode': 400,
             'headers': {
