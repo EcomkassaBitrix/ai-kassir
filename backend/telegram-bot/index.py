@@ -481,7 +481,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 delete_editing_state(old_preview_id)
                 delete_preview_data(old_preview_id)
             
-            if 'message' in preview_result:
+            # CRITICAL: process-receipt's "Перейди в Настройки" message points to the
+            # website settings page, which doesn't exist in Telegram. Show the correct
+            # instruction here instead: link the account with a code from the website.
+            if preview_result.get('missing_integration') == 'ecomkassa':
+                response_text = (
+                    "⚠️ Твой Telegram ещё не привязан к аккаунту ЕкомКасса.\n\n"
+                    "Зайди на сайт ИИ-кассира → Настройки → заполни логин и пароль ЕкомКасса, "
+                    "затем привяжи Telegram: в разделе настроек нажми «Привязать Telegram» "
+                    "и отправь мне полученный код командой /start LINK-XXXXX"
+                )
+            elif 'message' in preview_result:
                 response_text = preview_result['message']
             else:
                 error_msg = preview_result.get('error', 'Не удалось создать чек')
@@ -1174,6 +1184,14 @@ def handle_callback_query(callback_query: Dict[str, Any], bot_token: str) -> Dic
             
             # CRITICAL: Save last successful request for /repeat command
             save_last_successful_request(chat_id, preview_id, preview_data)
+        elif receipt_result.get('missing_integration') == 'ecomkassa':
+            edit_message(
+                bot_token, chat_id, message_id,
+                "⚠️ Твой Telegram ещё не привязан к аккаунту ЕкомКасса.\n\n"
+                "Зайди на сайт ИИ-кассира → Настройки → заполни логин и пароль ЕкомКасса, "
+                "затем привяжи Telegram: в разделе настроек нажми «Привязать Telegram» "
+                "и отправь мне полученный код командой /start LINK-XXXXX"
+            )
         else:
             error_msg = receipt_result.get('message') or receipt_result.get('error', 'Не удалось создать чек')
             edit_message(bot_token, chat_id, message_id, f"❌ Ошибка: {error_msg}")

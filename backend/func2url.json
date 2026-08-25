@@ -1,6 +1,7 @@
 {
   "mobile-auth": "https://functions.poehali.dev/fd43fe2c-bb5a-4912-b354-e5c60a2af1b2",
   "mobile-proxy": "https://functions.poehali.dev/046eeb6c-8c0d-4798-a78a-af2de72431ba",
+  "telegram-bot": "https://functions.poehali.dev/c931c0bd-bad6-4f16-9a76-f67296c311b1",
   "user-settings": "https://functions.poehali.dev/e8972b95-5a58-4023-8f81-5385338d4590",
   "get-receipts": "https://functions.poehali.dev/1e30d22a-a25c-46a5-b05a-ccc647ed9bb6",
   "process-receipt": "https://functions.poehali.dev/734da785-2867-4c5d-b20c-90fc6d86b11c"
