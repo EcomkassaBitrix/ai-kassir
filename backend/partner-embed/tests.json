@@ -73,6 +73,31 @@
       "expectedStatus": 401,
       "expectedBody": {"error": "string"},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST select_shop without token is rejected",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "select_shop",
+        "shop_id": "123"
+      },
+      "expectedStatus": 400,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST select_shop with unknown token is rejected",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "select_shop",
+        "token": "nonexistent-token-value-12345",
+        "shop_id": "123"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
     }
   ]
 }

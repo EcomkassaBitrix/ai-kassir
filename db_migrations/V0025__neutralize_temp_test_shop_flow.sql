@@ -1,0 +1,2 @@
+UPDATE user_settings SET ecomkassa_login = '', ecomkassa_password = '', group_code = '', payment_address = '' WHERE user_id = 'ecom_test_shop_flow_temp';
+UPDATE ecomkassa_sessions SET expires_at = '2000-01-01' WHERE user_id = 'ecom_test_shop_flow_temp';

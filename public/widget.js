@@ -6,6 +6,7 @@
  *   <script>
  *     AiCashier.init({
  *       token: 'ECOMKASSA_API_TOKEN',  // токен, полученный через ваш вход по логину/паролю кассы
+ *       shopId: 'STORE_ID',           // необязательно: если знаете, в какой магазин слать чеки — укажите storeId
  *       button: true                  // true — показать плавающую кнопку; false — вызывать AiCashier.open() вручную
  *     });
  *   </script>
@@ -14,6 +15,10 @@
  * мобильное приложение), полученный один раз через логин/пароль. Секретных ключей
  * партнёра здесь не требуется — сервер сам проверяет токен и открывает чат только
  * для его настоящего владельца.
+ *
+ * Магазин (group_code) выбирается автоматически: если у пользователя один магазин —
+ * подставится сам; если передан shopId — используется он; если магазинов несколько
+ * и shopId не передан — пользователь один раз выберет его в самом чате.
  */
 (function (window, document) {
   'use strict';
@@ -103,7 +108,8 @@
       body: JSON.stringify({
         action: 'issue_from_token',
         ecomkassa_token: opts.token,
-        partner_id: opts.partnerId || 'widget'
+        partner_id: opts.partnerId || 'widget',
+        shop_id: opts.shopId || ''
       })
     })
       .then(function (res) {

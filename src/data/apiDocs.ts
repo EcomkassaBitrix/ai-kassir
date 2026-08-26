@@ -514,14 +514,15 @@ X-New-Ecomkassa-Token: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
     name: 'partner-embed',
     httpMethods: ['POST', 'OPTIONS'],
     description:
-      'Партнёрская интеграция: открыть чат ИИ-кассира внутри чужого личного кабинета (iframe/попап) с уже готовыми настройками пользователя, без ручного логина внутри окна. Один метод, три действия через поле action: "issue_from_token" (самый простой способ — прямо из браузера партнёра, по уже готовому Ecomkassa-токену, без секретов), "issue" (сервер партнёра с секретным ключом передаёт логин/пароль кассы) и "exchange" (наша страница /embed меняет одноразовый токен на доступ — вызывается автоматически, партнёру дёргать не нужно).',
+      'Партнёрская интеграция: открыть чат ИИ-кассира внутри чужого личного кабинета (iframe/попап) с уже готовыми настройками пользователя, без ручного логина внутри окна. Один метод, четыре действия через поле action: "issue_from_token" (самый простой способ — прямо из браузера партнёра, по уже готовому Ecomkassa-токену, без секретов), "issue" (сервер партнёра с секретным ключом передаёт логин/пароль кассы), "exchange" (наша страница /embed меняет одноразовый токен на доступ — вызывается автоматически, партнёру дёргать не нужно) и "select_shop" (тоже вызывается автоматически страницей /embed, если у пользователя несколько магазинов и его нужно спросить, в какой слать чеки).',
     requestFields: [
-      { name: 'action', type: 'string', required: true, description: '"issue_from_token" | "issue" | "exchange"' },
+      { name: 'action', type: 'string', required: true, description: '"issue_from_token" | "issue" | "exchange" | "select_shop"' },
       { name: 'ecomkassa_token', type: 'string', required: true, description: 'Только для action=issue_from_token. Обычный API-токен Ecomkassa пользователя (получается через mobile-auth)' },
       { name: 'ecomkassa_login', type: 'string', required: true, description: 'Только для action=issue. Логин кассы Ecomkassa пользователя' },
       { name: 'ecomkassa_password', type: 'string', required: true, description: 'Только для action=issue. Пароль кассы Ecomkassa пользователя' },
       { name: 'partner_id', type: 'string', required: false, description: 'Для issue/issue_from_token. Метка вашей интеграции, по умолчанию "default"' },
-      { name: 'token', type: 'string', required: true, description: 'Только для action=exchange. Токен, полученный на предыдущем шаге' }
+      { name: 'shop_id', type: 'string', required: false, description: 'Для issue/issue_from_token. Если знаете storeId нужного магазина Ecomkassa — передайте его, чтобы не показывать пользователю выбор магазина в чате' },
+      { name: 'token', type: 'string', required: true, description: 'Для action=exchange (одноразовый embed_token) и action=select_shop (тот же embed_token, уже использованный при exchange)' }
     ],
     responseExample: `// action=issue_from_token или action=issue → 200 OK
 {
@@ -532,17 +533,32 @@ X-New-Ecomkassa-Token: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
 }
 
 // action=exchange → 200 OK (вызывается автоматически страницей /embed)
+// Обычный случай — магазин уже известен (сохранён раньше или передан через shop_id/один магазин):
 {
   "user_id": "ecom_sergey@ecomkassa.ru",
   "ecomkassa_login": "sergey@ecomkassa.ru"
+}
+// Если магазинов несколько и shop_id не передавался — вместо чата показывается выбор:
+{
+  "user_id": "ecom_sergey@ecomkassa.ru",
+  "ecomkassa_login": "sergey@ecomkassa.ru",
+  "needs_shop_selection": true,
+  "shops": [{ "storeId": "123", "storeName": "Магазин на Ленина", "storeAddress": "..." }],
+  "token": "xxxxx..."
+}
+
+// action=select_shop → 200 OK (вызывается автоматически страницей /embed после выбора)
+{
+  "user_id": "ecom_sergey@ecomkassa.ru",
+  "group_code": "123"
 }`,
     errors: [
-      { code: 400, description: 'нет action, нет ecomkassa_token (issue_from_token), нет ecomkassa_login/password (issue) или нет token (exchange)' },
-      { code: 401, description: 'ecomkassa_token недействителен/истёк, неверный/отсутствующий X-Partner-Secret, неверный логин/пароль кассы, embed-токен недействителен/уже использован/истёк' },
+      { code: 400, description: 'нет action, нет ecomkassa_token (issue_from_token), нет ecomkassa_login/password (issue), нет token (exchange) или нет token/shop_id (select_shop)' },
+      { code: 401, description: 'ecomkassa_token недействителен/истёк, неверный/отсутствующий X-Partner-Secret, неверный логин/пароль кассы, embed-токен недействителен/уже использован/истёк, время выбора магазина истекло' },
       { code: 405, description: 'метод не POST' },
       { code: 500, description: 'партнёрская интеграция не настроена или БД недоступна' }
     ],
-    notes: 'embed_token одноразовый и живёт всего 60 секунд — получайте его прямо перед открытием окна, не заранее. Шаг exchange делает наша страница /embed автоматически при загрузке — вам его вызывать не нужно.',
+    notes: 'embed_token одноразовый и живёт всего 60 секунд — получайте его прямо перед открытием окна, не заранее. Шаги exchange и (при необходимости) select_shop делает наша страница /embed автоматически при загрузке — вам их вызывать не нужно. Магазин выбирается один раз: при повторных визитах того же пользователя выбор уже сохранён и чат открывается сразу.',
     flowSteps: [
       {
         title: 'Способ 1 (рекомендуется) — виджет одной строкой, без своего бэкенда',
@@ -553,12 +569,16 @@ X-New-Ecomkassa-Token: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
 <script>
   AiCashier.init({
     token: ecomkassaApiToken, // токен пользователя, полученный через mobile-auth
+    shopId: storeId,          // необязательно: знаете нужный магазин — передайте его storeId
     button: true              // показать плавающую кнопку в углу экрана
   });
 
   // либо открыть по своей кнопке/клику:
-  // document.getElementById('my-button').onclick = () => AiCashier.open({ token: ecomkassaApiToken });
-</script>`
+  // document.getElementById('my-button').onclick = () => AiCashier.open({ token: ecomkassaApiToken, shopId: storeId });
+</script>
+
+// Если shopId не передан и у пользователя несколько магазинов — при первом визите
+// чат сам покажет ему простой выбор магазина, при следующих визитах уже не спросит.`
       },
       {
         title: 'Способ 2 — серверный вызов с секретным ключом (без пользовательского Ecomkassa-токена)',
@@ -572,7 +592,8 @@ Content-Type: application/json
   "action": "issue",
   "ecomkassa_login": "sergey@ecomkassa.ru",
   "ecomkassa_password": "пароль_кассы",
-  "partner_id": "my-crm"
+  "partner_id": "my-crm",
+  "shop_id": "123"
 }
 
 → 200 OK

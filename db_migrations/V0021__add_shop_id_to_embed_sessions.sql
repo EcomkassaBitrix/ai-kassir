@@ -1,0 +1,1 @@
+ALTER TABLE embed_sessions ADD COLUMN IF NOT EXISTS shop_id VARCHAR(255);

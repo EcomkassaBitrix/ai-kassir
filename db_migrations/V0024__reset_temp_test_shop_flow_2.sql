@@ -1,0 +1,2 @@
+UPDATE user_settings SET group_code = '', payment_address = '' WHERE user_id = 'ecom_test_shop_flow_temp';
+UPDATE ecomkassa_sessions SET expires_at = CURRENT_TIMESTAMP + INTERVAL '1 hour' WHERE token = 'test-temp-session-token-shop-flow-12345';

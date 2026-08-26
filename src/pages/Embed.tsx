@@ -7,22 +7,27 @@ import { useReceiptState } from '@/hooks/useReceiptState';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { useReceiptHandlers } from '@/hooks/useReceiptHandlers';
 import { setEcomkassaLogin } from '@/utils/userId';
+import { Shop } from '@/components/settings/types';
+import { Button } from '@/components/ui/button';
 import Icon from '@/components/ui/icon';
 
 const PARTNER_EMBED_URL = 'https://functions.poehali.dev/10219b97-9c66-4c02-b8a3-939f2d6e06c6';
 
-type EmbedStatus = 'loading' | 'ready' | 'error';
+type EmbedStatus = 'loading' | 'select_shop' | 'ready' | 'error';
 
 const Embed = () => {
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<EmbedStatus>('loading');
   const [errorMessage, setErrorMessage] = useState('');
+  const [shops, setShops] = useState<Shop[]>([]);
+  const [isSelectingShop, setIsSelectingShop] = useState(false);
   const [input, setInput] = useState('');
   const [operationType, setOperationType] = useState('sell');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const { messages, setMessages } = useChatMessages();
+  const embedTokenRef = useRef('');
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -32,6 +37,8 @@ const Embed = () => {
       setErrorMessage('Ссылка недействительна: отсутствует токен доступа');
       return;
     }
+
+    embedTokenRef.current = token;
 
     const exchangeToken = async () => {
       try {
@@ -53,6 +60,12 @@ const Embed = () => {
           setEcomkassaLogin(data.ecomkassa_login);
         }
 
+        if (data.needs_shop_selection) {
+          setShops(data.shops || []);
+          setStatus('select_shop');
+          return;
+        }
+
         setStatus('ready');
       } catch (error) {
         setStatus('error');
@@ -62,6 +75,32 @@ const Embed = () => {
 
     exchangeToken();
   }, [searchParams]);
+
+  const handleSelectShop = async (shopId: string) => {
+    setIsSelectingShop(true);
+    try {
+      const response = await fetch(PARTNER_EMBED_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'select_shop', token: embedTokenRef.current, shop_id: shopId })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setStatus('error');
+        setErrorMessage(data.error || 'Не удалось выбрать магазин');
+        return;
+      }
+
+      setStatus('ready');
+    } catch (error) {
+      setStatus('error');
+      setErrorMessage('Ошибка соединения с сервером');
+    } finally {
+      setIsSelectingShop(false);
+    }
+  };
 
   const {
     pendingReceipt,
@@ -124,6 +163,33 @@ const Embed = () => {
       <div className="h-screen bg-background flex flex-col items-center justify-center gap-3 px-6 text-center">
         <Icon name="AlertCircle" size={32} className="text-destructive" />
         <p className="text-sm text-muted-foreground max-w-sm">{errorMessage}</p>
+      </div>
+    );
+  }
+
+  if (status === 'select_shop') {
+    return (
+      <div className="h-screen bg-background flex flex-col items-center justify-center gap-4 px-6">
+        <Icon name="Store" size={28} className="text-primary" />
+        <p className="text-sm text-muted-foreground text-center">Выберите магазин, в который будут отправляться чеки</p>
+        <div className="w-full max-w-sm flex flex-col gap-2">
+          {shops.map((shop) => (
+            <Button
+              key={shop.storeId}
+              variant="outline"
+              disabled={isSelectingShop}
+              className="w-full justify-start h-auto py-3 text-left"
+              onClick={() => handleSelectShop(shop.storeId)}
+            >
+              <div className="flex flex-col items-start gap-0.5">
+                <span className="font-medium">{shop.storeName}</span>
+                {shop.storeAddress && (
+                  <span className="text-xs text-muted-foreground">{shop.storeAddress}</span>
+                )}
+              </div>
+            </Button>
+          ))}
+        </div>
       </div>
     );
   }

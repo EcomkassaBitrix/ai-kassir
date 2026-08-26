@@ -114,6 +114,7 @@ def handle_issue_from_token(body_data: Dict[str, Any]) -> Dict[str, Any]:
     '''
     ecomkassa_token = (body_data.get('ecomkassa_token') or '').strip()
     partner_id = (body_data.get('partner_id') or 'default').strip()
+    shop_id = (body_data.get('shop_id') or '').strip()
 
     if not ecomkassa_token:
         return json_response(400, {'error': 'ecomkassa_token is required'})
@@ -145,8 +146,8 @@ def handle_issue_from_token(body_data: Dict[str, Any]) -> Dict[str, Any]:
     expires_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=EMBED_TOKEN_TTL_SECONDS)
 
     cur.execute(
-        "INSERT INTO embed_sessions (token, user_id, partner_id, expires_at) VALUES (%s, %s, %s, %s)",
-        (embed_token, user_id, partner_id, expires_at)
+        "INSERT INTO embed_sessions (token, user_id, partner_id, shop_id, expires_at) VALUES (%s, %s, %s, %s, %s)",
+        (embed_token, user_id, partner_id, shop_id or None, expires_at)
     )
 
     conn.commit()
@@ -178,6 +179,7 @@ def handle_issue(body_data: Dict[str, Any], headers: Dict[str, Any]) -> Dict[str
     login = (body_data.get('ecomkassa_login') or '').strip()
     password = body_data.get('ecomkassa_password') or ''
     partner_id = (body_data.get('partner_id') or 'default').strip()
+    shop_id = (body_data.get('shop_id') or '').strip()
 
     if not login or not password:
         return json_response(400, {'error': 'ecomkassa_login and ecomkassa_password are required'})
@@ -214,8 +216,8 @@ def handle_issue(body_data: Dict[str, Any], headers: Dict[str, Any]) -> Dict[str
     expires_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=EMBED_TOKEN_TTL_SECONDS)
 
     cur.execute(
-        "INSERT INTO embed_sessions (token, user_id, partner_id, expires_at) VALUES (%s, %s, %s, %s)",
-        (embed_token, user_id, partner_id, expires_at)
+        "INSERT INTO embed_sessions (token, user_id, partner_id, shop_id, expires_at) VALUES (%s, %s, %s, %s, %s)",
+        (embed_token, user_id, partner_id, shop_id or None, expires_at)
     )
 
     conn.commit()
@@ -230,10 +232,53 @@ def handle_issue(body_data: Dict[str, Any], headers: Dict[str, Any]) -> Dict[str
     })
 
 
+def fetch_ecomkassa_stores(login: str, password: str) -> Optional[list]:
+    '''Fetch the list of Ecomkassa stores (group_code candidates) for this account'''
+    token = verify_ecomkassa_credentials(login, password)
+    if not token:
+        return None
+
+    try:
+        resp = requests.get(
+            'https://app.ecomkassa.ru/api/mobile/v1/profile/firm',
+            headers={'Token': token, 'Content-Type': 'application/json; charset=utf-8'},
+            timeout=10,
+            verify=False
+        )
+    except requests.RequestException:
+        return None
+
+    if resp.status_code != 200:
+        return None
+
+    data = resp.json()
+    if data.get('errorCode') != 0:
+        return None
+
+    stores = data.get('payload', {}).get('stores', [])
+    return [
+        {
+            'storeId': str(s.get('storeId', '')),
+            'storeName': s.get('storeName', 'Без названия'),
+            'storeAddress': s.get('storeAddress', '')
+        }
+        for s in stores if s.get('storeId')
+    ]
+
+
 def handle_exchange(body_data: Dict[str, Any]) -> Dict[str, Any]:
     '''
     Called by our own /embed frontend page right after it loads inside the partner's iframe.
     Exchanges the one-time embed token for the canonical user_id. Token is single-use and short-lived.
+
+    Also resolves which Ecomkassa store (group_code) the chat should post receipts to:
+    - If the account already has a group_code saved (returning user / previously configured
+      in regular Settings) — reuse it, nothing to ask.
+    - Else if the partner passed shop_id when issuing the embed token — use that directly.
+    - Else if the account has exactly one store in Ecomkassa — auto-select it.
+    - Else (multiple stores, no shop_id given) — return the store list so /embed can show a
+      one-time picker before the chat opens; the token stays valid for a follow-up
+      "select_shop" call for a few minutes.
     '''
     token = (body_data.get('token') or '').strip()
     if not token:
@@ -247,7 +292,7 @@ def handle_exchange(body_data: Dict[str, Any]) -> Dict[str, Any]:
     cur = conn.cursor()
 
     cur.execute(
-        "SELECT user_id, expires_at, used_at FROM embed_sessions WHERE token = %s",
+        "SELECT user_id, shop_id, expires_at, used_at FROM embed_sessions WHERE token = %s",
         (token,)
     )
     row = cur.fetchone()
@@ -257,7 +302,7 @@ def handle_exchange(body_data: Dict[str, Any]) -> Dict[str, Any]:
         conn.close()
         return json_response(401, {'error': 'Недействительный токен доступа'})
 
-    user_id, expires_at, used_at = row
+    user_id, partner_shop_id, expires_at, used_at = row
 
     if used_at is not None:
         cur.close()
@@ -275,33 +320,145 @@ def handle_exchange(body_data: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     cur.execute(
-        "SELECT ecomkassa_login FROM user_settings WHERE user_id = %s",
+        "SELECT ecomkassa_login, ecomkassa_password, group_code FROM user_settings WHERE user_id = %s",
         (user_id,)
     )
     settings_row = cur.fetchone()
     ecomkassa_login = settings_row[0] if settings_row else ''
+    ecomkassa_password = settings_row[1] if settings_row else ''
+    group_code = settings_row[2] if settings_row else ''
+
+    result = {
+        'user_id': user_id,
+        'ecomkassa_login': ecomkassa_login or ''
+    }
+
+    if group_code:
+        # Returning user (or already picked a store in regular Settings) — nothing to resolve.
+        conn.commit()
+        cur.close()
+        conn.close()
+        return json_response(200, result)
+
+    if partner_shop_id:
+        # Partner told us exactly which store to use — trust it, try to also grab its address.
+        stores = fetch_ecomkassa_stores(ecomkassa_login, ecomkassa_password) or []
+        matched = next((s for s in stores if s['storeId'] == partner_shop_id), None)
+        cur.execute(
+            "UPDATE user_settings SET group_code = %s, payment_address = COALESCE(NULLIF(payment_address, ''), %s), updated_at = CURRENT_TIMESTAMP WHERE user_id = %s",
+            (partner_shop_id, matched['storeAddress'] if matched else '', user_id)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        return json_response(200, result)
+
+    if ecomkassa_login and ecomkassa_password:
+        stores = fetch_ecomkassa_stores(ecomkassa_login, ecomkassa_password)
+        if stores:
+            if len(stores) == 1:
+                only_store = stores[0]
+                cur.execute(
+                    "UPDATE user_settings SET group_code = %s, payment_address = COALESCE(NULLIF(payment_address, ''), %s), updated_at = CURRENT_TIMESTAMP WHERE user_id = %s",
+                    (only_store['storeId'], only_store['storeAddress'], user_id)
+                )
+                conn.commit()
+                cur.close()
+                conn.close()
+                return json_response(200, result)
+
+            # Multiple stores and no hint from the partner — let the user pick once in /embed.
+            conn.commit()
+            cur.close()
+            conn.close()
+            result['needs_shop_selection'] = True
+            result['shops'] = stores
+            result['token'] = token
+            return json_response(200, result)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return json_response(200, result)
+
+
+def handle_select_shop(body_data: Dict[str, Any]) -> Dict[str, Any]:
+    '''
+    Follow-up call from /embed after the user picked a store from the "needs_shop_selection"
+    list returned by exchange. Reuses the same (already-exchanged) embed token as proof of
+    identity — valid for a short grace window after exchange so it can't be replayed later.
+    '''
+    token = (body_data.get('token') or '').strip()
+    shop_id = (body_data.get('shop_id') or '').strip()
+
+    if not token or not shop_id:
+        return json_response(400, {'error': 'token and shop_id are required'})
+
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        return json_response(500, {'error': 'Database not configured'})
+
+    conn = psycopg2.connect(database_url)
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT user_id, used_at FROM embed_sessions WHERE token = %s",
+        (token,)
+    )
+    row = cur.fetchone()
+
+    if not row or row[1] is None:
+        cur.close()
+        conn.close()
+        return json_response(401, {'error': 'Недействительная сессия, откройте чат заново'})
+
+    user_id, used_at = row
+    grace_window = datetime.timedelta(minutes=5)
+    if used_at + grace_window < datetime.datetime.utcnow():
+        cur.close()
+        conn.close()
+        return json_response(401, {'error': 'Время выбора магазина истекло, откройте чат заново'})
+
+    cur.execute(
+        "SELECT ecomkassa_login, ecomkassa_password FROM user_settings WHERE user_id = %s",
+        (user_id,)
+    )
+    settings_row = cur.fetchone()
+    login = settings_row[0] if settings_row else ''
+    password = settings_row[1] if settings_row else ''
+
+    stores = fetch_ecomkassa_stores(login, password) or []
+    matched = next((s for s in stores if s['storeId'] == shop_id), None)
+
+    cur.execute(
+        "UPDATE user_settings SET group_code = %s, payment_address = COALESCE(NULLIF(payment_address, ''), %s), updated_at = CURRENT_TIMESTAMP WHERE user_id = %s",
+        (shop_id, matched['storeAddress'] if matched else '', user_id)
+    )
 
     conn.commit()
     cur.close()
     conn.close()
 
-    return json_response(200, {
-        'user_id': user_id,
-        'ecomkassa_login': ecomkassa_login or ''
-    })
+    return json_response(200, {'user_id': user_id, 'group_code': shop_id})
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Combined partner-integration endpoint (three actions in one function to save
+    Business: Combined partner-integration endpoint (four actions in one function to save
     function slots). Action "issue": partner LK backend (server-to-server) exchanges its
     X-Partner-Secret header plus Ecomkassa login/password for a one-time embed token.
     Action "issue_from_token": public, no-secret flow — partner FRONTEND sends a real
     Ecomkassa API token (obtained earlier via our public mobile-auth login) straight from
     the browser; we validate it against our own ecomkassa_sessions table and issue an embed
-    token if it is genuine and not expired. Action "exchange": our own /embed frontend page
-    exchanges that embed token for the canonical user_id right after loading in the iframe.
-    Args: event with httpMethod POST, body (action: "issue"|"issue_from_token"|"exchange", plus action-specific fields)
+    token if it is genuine and not expired. Both "issue" and "issue_from_token" accept an
+    optional shop_id if the partner already knows which Ecomkassa store to post receipts to.
+    Action "exchange": our own /embed frontend page exchanges that embed token for the
+    canonical user_id right after loading in the iframe, and also resolves which store
+    (group_code) to use (saved store / partner-provided shop_id / auto-pick if the account
+    has only one store / otherwise returns a shops list for the user to pick from).
+    Action "select_shop": follow-up call from /embed after the user picked a store from that
+    list, using the already-exchanged embed token as proof of identity.
+    Args: event with httpMethod POST, body (action: "issue"|"issue_from_token"|"exchange"|"select_shop", plus action-specific fields)
     Returns: HTTP response with token/user data depending on requested action
     '''
     method: str = event.get('httpMethod', 'GET')
@@ -331,5 +488,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return handle_issue_from_token(body_data)
     if action == 'exchange':
         return handle_exchange(body_data)
+    if action == 'select_shop':
+        return handle_select_shop(body_data)
 
-    return json_response(400, {'error': 'Missing or invalid "action" field, expected "issue", "issue_from_token" or "exchange"'})
+    return json_response(400, {'error': 'Missing or invalid "action" field, expected "issue", "issue_from_token", "exchange" or "select_shop"'})
