@@ -513,6 +513,30 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
 
+def _post_telegram_api(url: str, data: dict, attempts: int = 2, timeout: int = 5) -> None:
+    '''Call Telegram Bot API with retries, since api.telegram.org occasionally times out'''
+    import time as _time
+    req_body = json.dumps(data).encode('utf-8')
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            req = urllib.request.Request(
+                url,
+                data=req_body,
+                headers={'Content-Type': 'application/json'}
+            )
+            urllib.request.urlopen(req, timeout=timeout)
+            return
+        except Exception as e:
+            last_error = e
+            print(f"[WARN] Telegram API call failed (attempt {attempt}/{attempts}): {e}")
+            if attempt < attempts:
+                _time.sleep(0.5)
+
+    print(f"[ERROR] Telegram API call failed after {attempts} attempts: {last_error}")
+
+
 def send_telegram_message(bot_token: str, chat_id: int, text: str) -> None:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     data = {
@@ -520,14 +544,7 @@ def send_telegram_message(bot_token: str, chat_id: int, text: str) -> None:
         'text': text,
         'parse_mode': 'HTML'
     }
-    
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(data).encode('utf-8'),
-        headers={'Content-Type': 'application/json'}
-    )
-    
-    urllib.request.urlopen(req, timeout=10)
+    _post_telegram_api(url, data)
 
 
 def send_telegram_message_with_buttons(bot_token: str, chat_id: int, text: str, buttons: list) -> None:
@@ -540,14 +557,7 @@ def send_telegram_message_with_buttons(bot_token: str, chat_id: int, text: str, 
             'inline_keyboard': buttons
         }
     }
-    
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(data).encode('utf-8'),
-        headers={'Content-Type': 'application/json'}
-    )
-    
-    urllib.request.urlopen(req, timeout=10)
+    _post_telegram_api(url, data)
 
 
 def send_photo(bot_token: str, chat_id: int, photo_url: str, caption: str = '') -> None:
