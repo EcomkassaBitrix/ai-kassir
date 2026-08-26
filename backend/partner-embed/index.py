@@ -232,12 +232,11 @@ def handle_issue(body_data: Dict[str, Any], headers: Dict[str, Any]) -> Dict[str
     })
 
 
-def fetch_ecomkassa_stores(login: str, password: str) -> Optional[list]:
-    '''Fetch the list of Ecomkassa stores (group_code candidates) for this account'''
-    token = verify_ecomkassa_credentials(login, password)
-    if not token:
-        return None
-
+def fetch_ecomkassa_stores_by_token(token: str) -> Optional[list]:
+    '''
+    GET /api/mobile/v1/profile/firm needs only a Token header — no login/password.
+    (Ecomkassa/ATOL Online v5: any endpoint after auth just wants the bearer-like Token.)
+    '''
     try:
         resp = requests.get(
             'https://app.ecomkassa.ru/api/mobile/v1/profile/firm',
@@ -264,6 +263,37 @@ def fetch_ecomkassa_stores(login: str, password: str) -> Optional[list]:
         }
         for s in stores if s.get('storeId')
     ]
+
+
+def fetch_ecomkassa_stores(login: str, password: str) -> Optional[list]:
+    '''Fetch the list of Ecomkassa stores (group_code candidates) for this account by re-authenticating'''
+    token = verify_ecomkassa_credentials(login, password)
+    if not token:
+        return None
+    return fetch_ecomkassa_stores_by_token(token)
+
+
+def resolve_stores_for_user(cur, user_id: str, login: str, password: str) -> Optional[list]:
+    '''
+    Prefer a still-valid token we already issued for this user (in ecomkassa_sessions,
+    populated by mobile-auth/issue_from_token) — one less round-trip to Ecomkassa, no need
+    to touch the password. Falls back to a fresh login/password auth only if there is no
+    usable saved token (e.g. session expired, or this account was set up via action=issue).
+    '''
+    cur.execute(
+        "SELECT token FROM ecomkassa_sessions WHERE user_id = %s AND expires_at > CURRENT_TIMESTAMP",
+        (user_id,)
+    )
+    session_row = cur.fetchone()
+    if session_row:
+        stores = fetch_ecomkassa_stores_by_token(session_row[0])
+        if stores is not None:
+            return stores
+
+    if login and password:
+        return fetch_ecomkassa_stores(login, password)
+
+    return None
 
 
 def handle_exchange(body_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -342,7 +372,7 @@ def handle_exchange(body_data: Dict[str, Any]) -> Dict[str, Any]:
 
     if partner_shop_id:
         # Partner told us exactly which store to use — trust it, try to also grab its address.
-        stores = fetch_ecomkassa_stores(ecomkassa_login, ecomkassa_password) or []
+        stores = resolve_stores_for_user(cur, user_id, ecomkassa_login, ecomkassa_password) or []
         matched = next((s for s in stores if s['storeId'] == partner_shop_id), None)
         cur.execute(
             "UPDATE user_settings SET group_code = %s, payment_address = COALESCE(NULLIF(payment_address, ''), %s), updated_at = CURRENT_TIMESTAMP WHERE user_id = %s",
@@ -353,28 +383,27 @@ def handle_exchange(body_data: Dict[str, Any]) -> Dict[str, Any]:
         conn.close()
         return json_response(200, result)
 
-    if ecomkassa_login and ecomkassa_password:
-        stores = fetch_ecomkassa_stores(ecomkassa_login, ecomkassa_password)
-        if stores:
-            if len(stores) == 1:
-                only_store = stores[0]
-                cur.execute(
-                    "UPDATE user_settings SET group_code = %s, payment_address = COALESCE(NULLIF(payment_address, ''), %s), updated_at = CURRENT_TIMESTAMP WHERE user_id = %s",
-                    (only_store['storeId'], only_store['storeAddress'], user_id)
-                )
-                conn.commit()
-                cur.close()
-                conn.close()
-                return json_response(200, result)
-
-            # Multiple stores and no hint from the partner — let the user pick once in /embed.
+    stores = resolve_stores_for_user(cur, user_id, ecomkassa_login, ecomkassa_password)
+    if stores:
+        if len(stores) == 1:
+            only_store = stores[0]
+            cur.execute(
+                "UPDATE user_settings SET group_code = %s, payment_address = COALESCE(NULLIF(payment_address, ''), %s), updated_at = CURRENT_TIMESTAMP WHERE user_id = %s",
+                (only_store['storeId'], only_store['storeAddress'], user_id)
+            )
             conn.commit()
             cur.close()
             conn.close()
-            result['needs_shop_selection'] = True
-            result['shops'] = stores
-            result['token'] = token
             return json_response(200, result)
+
+        # Multiple stores and no hint from the partner — let the user pick once in /embed.
+        conn.commit()
+        cur.close()
+        conn.close()
+        result['needs_shop_selection'] = True
+        result['shops'] = stores
+        result['token'] = token
+        return json_response(200, result)
 
     conn.commit()
     cur.close()
@@ -427,7 +456,7 @@ def handle_select_shop(body_data: Dict[str, Any]) -> Dict[str, Any]:
     login = settings_row[0] if settings_row else ''
     password = settings_row[1] if settings_row else ''
 
-    stores = fetch_ecomkassa_stores(login, password) or []
+    stores = resolve_stores_for_user(cur, user_id, login, password) or []
     matched = next((s for s in stores if s['storeId'] == shop_id), None)
 
     cur.execute(
