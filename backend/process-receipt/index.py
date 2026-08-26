@@ -326,8 +326,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     has_copy_request = bool(re.search(r'\d{8,}', user_message)) and any(keyword in text_lower for keyword in ['копи', 'повтор', 'дубл', 'еще', 'ещё'])
     
+    # CRITICAL: If edited_data is present, the user already confirmed/edited a preview -
+    # the original free-text message is only kept for logging/AI context and must NOT be
+    # re-validated (it may be short or "irrelevant" after editing, e.g. renamed item).
+    has_edited_data = bool(edited_data)
+    
     # CRITICAL: Check irrelevant keywords ONLY if no context (don't block short messages with context)
-    if not has_receipt_keywords and not has_context and not has_copy_request:
+    if not has_receipt_keywords and not has_context and not has_copy_request and not has_edited_data:
         # Check for irrelevant keywords (greetings, jokes, etc.)
         for keyword in irrelevant_keywords:
             if keyword in text_lower:
