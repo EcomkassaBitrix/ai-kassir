@@ -7,7 +7,14 @@
  *     AiCashier.init({
  *       token: 'ECOMKASSA_API_TOKEN',  // токен, полученный через ваш вход по логину/паролю кассы
  *       shopId: 'STORE_ID',           // необязательно: если знаете, в какой магазин слать чеки — укажите storeId
- *       button: true                  // true — показать плавающую кнопку; false — вызывать AiCashier.open() вручную
+ *       button: true,                 // true — показать плавающую кнопку; false — вызывать AiCashier.open() вручную
+ *
+ *       // Внешний вид окна (все необязательны, есть разумные значения по умолчанию):
+ *       width: 440,                   // ширина попапа на десктопе, px
+ *       height: 680,                  // высота попапа на десктопе, px
+ *       mobileBreakpoint: 640,        // ниже этой ширины экрана — окно раскрывается на весь экран
+ *       fullscreenOnMobile: true,     // false — не раскрывать на весь экран, всегда показывать маленькое окно
+ *       fullscreen: false             // true — всегда на весь экран, даже на десктопе
  *     });
  *   </script>
  *
@@ -19,6 +26,10 @@
  * Магазин (group_code) выбирается автоматически: если у пользователя один магазин —
  * подставится сам; если передан shopId — используется он; если магазинов несколько
  * и shopId не передан — пользователь один раз выберет его в самом чате.
+ *
+ * По умолчанию на мобильных экранах (уже mobileBreakpoint) окно само раскрывается
+ * на весь экран — так удобнее печатать и читать чат на телефоне. На десктопе
+ * остаётся компактный попап. Поведение можно переопределить через опции выше.
  */
 (function (window, document) {
   'use strict';
@@ -29,8 +40,10 @@
   var state = {
     options: null,
     overlay: null,
+    panel: null,
     iframe: null,
-    button: null
+    button: null,
+    resizeHandler: null
   };
 
   function log(message) {
@@ -39,28 +52,56 @@
     }
   }
 
-  function createOverlay() {
+  function isFullscreenMode(opts) {
+    if (opts.fullscreen) return true;
+    if (opts.fullscreenOnMobile === false) return false;
+    var breakpoint = opts.mobileBreakpoint || 640;
+    return window.innerWidth <= breakpoint;
+  }
+
+  function applyPanelStyle(opts) {
+    var fullscreen = isFullscreenMode(opts);
+    var width = opts.width || 440;
+    var height = opts.height || 680;
+
+    if (fullscreen) {
+      state.overlay.style.padding = '0';
+      state.overlay.style.background = '#0f0f14';
+      state.panel.style.cssText = [
+        'position:relative', 'width:100%', 'height:100%',
+        'max-width:none', 'max-height:none',
+        'background:#0f0f14', 'border-radius:0',
+        'overflow:hidden'
+      ].join(';');
+    } else {
+      state.overlay.style.padding = '16px';
+      state.overlay.style.background = 'rgba(15,15,20,0.55)';
+      state.panel.style.cssText = [
+        'position:relative', 'width:100%', 'max-width:' + width + 'px',
+        'height:' + height + 'px', 'max-height:92vh',
+        'background:#0f0f14', 'border-radius:16px',
+        'overflow:hidden', 'box-shadow:0 20px 60px rgba(0,0,0,0.4)'
+      ].join(';');
+    }
+  }
+
+  function createOverlay(opts) {
     var overlay = document.createElement('div');
     overlay.setAttribute('data-ai-cashier-overlay', '');
     overlay.style.cssText = [
       'position:fixed', 'inset:0', 'z-index:2147483000',
-      'background:rgba(15,15,20,0.55)', 'display:flex',
-      'align-items:center', 'justify-content:center',
-      'padding:16px', 'box-sizing:border-box'
+      'display:flex', 'align-items:center', 'justify-content:center',
+      'box-sizing:border-box'
     ].join(';');
 
     var panel = document.createElement('div');
-    panel.style.cssText = [
-      'position:relative', 'width:100%', 'max-width:440px', 'height:680px',
-      'max-height:92vh', 'background:#0f0f14', 'border-radius:16px',
-      'overflow:hidden', 'box-shadow:0 20px 60px rgba(0,0,0,0.4)'
-    ].join(';');
+    panel.style.boxSizing = 'border-box';
 
     var closeBtn = document.createElement('button');
     closeBtn.setAttribute('aria-label', 'Закрыть');
     closeBtn.innerHTML = '&times;';
     closeBtn.style.cssText = [
-      'position:absolute', 'top:8px', 'right:8px', 'z-index:2',
+      'position:absolute', 'top:calc(8px + env(safe-area-inset-top, 0px))', 'right:8px', 'z-index:2',
       'width:32px', 'height:32px', 'border-radius:8px', 'border:0',
       'background:rgba(255,255,255,0.08)', 'color:#fff', 'font-size:20px',
       'line-height:1', 'cursor:pointer'
@@ -80,11 +121,24 @@
     });
 
     state.overlay = overlay;
+    state.panel = panel;
     state.iframe = iframe;
+
+    applyPanelStyle(opts);
+
+    state.resizeHandler = function () {
+      applyPanelStyle(opts);
+    };
+    window.addEventListener('resize', state.resizeHandler);
+
     return overlay;
   }
 
   function close() {
+    if (state.resizeHandler) {
+      window.removeEventListener('resize', state.resizeHandler);
+      state.resizeHandler = null;
+    }
     if (state.overlay && state.overlay.parentNode) {
       state.overlay.parentNode.removeChild(state.overlay);
     }
@@ -92,6 +146,7 @@
       state.iframe.src = 'about:blank';
     }
     state.overlay = null;
+    state.panel = null;
     state.iframe = null;
   }
 
@@ -119,7 +174,7 @@
         });
       })
       .then(function (data) {
-        var overlay = createOverlay();
+        var overlay = createOverlay(opts);
         document.body.appendChild(overlay);
         state.iframe.src = BASE_URL + data.embed_path;
       })
