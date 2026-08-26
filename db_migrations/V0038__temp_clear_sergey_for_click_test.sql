@@ -1,0 +1,1 @@
+UPDATE user_settings SET group_code = '', payment_address = '' WHERE user_id = 'ecom_sergey@ecomkassa.ru';

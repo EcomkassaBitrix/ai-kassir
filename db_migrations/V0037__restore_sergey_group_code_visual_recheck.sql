@@ -1,0 +1,1 @@
+UPDATE user_settings SET group_code = '1172', payment_address = 'BIFIT New ' WHERE user_id = 'ecom_sergey@ecomkassa.ru';

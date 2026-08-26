@@ -169,22 +169,22 @@ const Embed = () => {
 
   if (status === 'select_shop') {
     return (
-      <div className="h-screen bg-background flex flex-col items-center justify-center gap-4 px-6">
-        <Icon name="Store" size={28} className="text-primary" />
-        <p className="text-sm text-muted-foreground text-center">Выберите магазин, в который будут отправляться чеки</p>
-        <div className="w-full max-w-sm flex flex-col gap-2">
+      <div className="h-screen bg-background flex flex-col items-center gap-4 px-4 py-6 overflow-y-auto">
+        <Icon name="Store" size={28} className="text-primary shrink-0" />
+        <p className="text-sm text-muted-foreground text-center shrink-0">Выберите магазин, в который будут отправляться чеки</p>
+        <div className="w-full max-w-sm flex flex-col gap-2 pb-4">
           {shops.map((shop) => (
             <Button
               key={shop.storeId}
               variant="outline"
               disabled={isSelectingShop}
-              className="w-full justify-start h-auto py-3 text-left"
+              className="w-full h-auto py-3 px-4 text-left justify-start whitespace-normal"
               onClick={() => handleSelectShop(shop.storeId)}
             >
-              <div className="flex flex-col items-start gap-0.5">
-                <span className="font-medium">{shop.storeName}</span>
+              <div className="flex flex-col items-start gap-0.5 min-w-0 w-full">
+                <span className="font-medium break-words w-full">{shop.storeName}</span>
                 {shop.storeAddress && (
-                  <span className="text-xs text-muted-foreground">{shop.storeAddress}</span>
+                  <span className="text-xs text-muted-foreground break-words w-full">{shop.storeAddress}</span>
                 )}
               </div>
             </Button>
