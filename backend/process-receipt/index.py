@@ -331,9 +331,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # re-validated (it may be short or "irrelevant" after editing, e.g. renamed item).
     has_edited_data = bool(edited_data)
     
+    # CRITICAL: A message with a digit (e.g. "чай 400") is almost certainly "item + price",
+    # not small talk — even if short and without an explicit keyword like "руб".
+    # Without this, the very first message of a chat (no context yet) got blocked as "too short".
+    has_price_number = bool(re.search(r'\d', user_message))
+    
     # CRITICAL: Check irrelevant keywords ONLY if no context (don't block short messages with context)
     if not has_receipt_keywords and not has_context and not has_copy_request and not has_edited_data:
-        # Check for irrelevant keywords (greetings, jokes, etc.)
+        # Check for irrelevant keywords (greetings, jokes, etc.) — always, even with a number
         for keyword in irrelevant_keywords:
             if keyword in text_lower:
                 print(f"[DEBUG] Irrelevant request blocked: '{user_message}' contains '{keyword}'")
@@ -349,8 +354,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     })
                 }
         
-        # Check for too short messages ONLY if no context
-        if len(text_lower) < 10:
+        # Check for too short messages ONLY if no context AND no price number
+        if len(text_lower) < 10 and not has_price_number:
             print(f"[DEBUG] Too short message without receipt keywords and no context: '{user_message}'")
             return {
                 'statusCode': 400,
