@@ -2,6 +2,7 @@ import json
 import os
 import re
 import secrets
+import hashlib
 import datetime
 import requests
 import urllib3
@@ -103,14 +104,64 @@ def json_response(status: int, payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def extract_jwt_subject(token: str) -> Optional[str]:
+    '''
+    Ecomkassa tokens are JWTs whose "sub" claim uniquely identifies the account that
+    logged in (differs per login even within the same demo/test company where store
+    lists are identical). We only read it after the token was already proven valid by
+    calling Ecomkassa itself — no signature check needed, just a stable per-account key.
+    '''
+    import base64
+    try:
+        parts = token.split('.')
+        if len(parts) != 3:
+            return None
+        payload_b64 = parts[1] + '=' * (-len(parts[1]) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        sub = payload.get('sub')
+        return str(sub) if sub else None
+    except Exception:
+        return None
+
+
+def fetch_ecomkassa_profile_by_token(token: str) -> Optional[Dict[str, Any]]:
+    '''
+    Validate an Ecomkassa API token directly against Ecomkassa itself (no login/password
+    needed — GET /api/mobile/v1/profile/firm only needs the Token header) and return
+    the raw stores payload if the token is genuine. Used as a fallback when the token
+    was issued by Ecomkassa directly (e.g. partner LK's own login flow) rather than by
+    our own mobile-auth endpoint, so it is not present in our ecomkassa_sessions table.
+    '''
+    try:
+        resp = requests.get(
+            'https://app.ecomkassa.ru/api/mobile/v1/profile/firm',
+            headers={'Token': token, 'Content-Type': 'application/json; charset=utf-8'},
+            timeout=10,
+            verify=False
+        )
+    except requests.RequestException:
+        return None
+
+    if resp.status_code != 200:
+        return None
+
+    data = resp.json()
+    if data.get('errorCode') != 0:
+        return None
+
+    return data.get('payload', {})
+
+
 def handle_issue_from_token(body_data: Dict[str, Any]) -> Dict[str, Any]:
     '''
-    Public, no-secret flow: partner frontend already holds a real Ecomkassa API token
-    obtained earlier via our own public mobile-auth endpoint (login+password once,
-    same as our mobile app login). It sends that token straight from the browser.
-    We look it up in our own ecomkassa_sessions table (populated by mobile-auth) —
-    if it is a token WE issued and it is not expired, the caller is proven to be the
-    real cashier owner, no partner secret required.
+    Public, no-secret flow: partner frontend already holds a real Ecomkassa API token.
+    Two cases:
+    1) Token was issued by OUR OWN mobile-auth endpoint (login+password once) — look it
+       up in ecomkassa_sessions, instant match, no extra network call.
+    2) Token was issued by Ecomkassa directly (partner's own login page calls Ecomkassa's
+       getToken itself) — not in our table. Fall back to validating it straight against
+       Ecomkassa (GET /api/mobile/v1/profile/firm needs only the Token header). If valid,
+       cache it into ecomkassa_sessions so next time it is an instant DB match.
     '''
     ecomkassa_token = (body_data.get('ecomkassa_token') or '').strip()
     partner_id = (body_data.get('partner_id') or 'default').strip()
@@ -135,12 +186,53 @@ def handle_issue_from_token(body_data: Dict[str, Any]) -> Dict[str, Any]:
     )
     row = cur.fetchone()
 
-    if not row:
-        cur.close()
-        conn.close()
-        return json_response(401, {'error': 'Токен недействителен или истёк, войдите заново'})
+    if row:
+        user_id = row[0]
+    else:
+        profile = fetch_ecomkassa_profile_by_token(ecomkassa_token)
+        if profile is None:
+            cur.close()
+            conn.close()
+            return json_response(401, {'error': 'Токен недействителен или истёк, войдите заново'})
 
-    user_id = row[0]
+        # IMPORTANT: profile/firm only returns company+store data, which can be IDENTICAL
+        # across different accounts (e.g. shared demo/test company in Ecomkassa) — matching
+        # by store or firm would silently mix up two different merchants. The JWT "sub" claim
+        # is the only value here that is unique per actual login, so we derive a stable,
+        # collision-free user_id from it (same login always maps to the same user_id; two
+        # different logins never collide, even if their stores/company look identical).
+        jwt_subject = extract_jwt_subject(ecomkassa_token)
+
+        user_id = None
+        if jwt_subject:
+            cur.execute(
+                "SELECT user_id FROM user_settings WHERE ecomkassa_jwt_subject = %s LIMIT 1",
+                (jwt_subject,)
+            )
+            subj_row = cur.fetchone()
+            if subj_row:
+                user_id = subj_row[0]
+
+        if not user_id:
+            subject_key = jwt_subject or ecomkassa_token
+            user_id = 'ecom_jwt_' + hashlib.sha256(subject_key.encode('utf-8')).hexdigest()[:24]
+
+        expires_at_session = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+        cur.execute(
+            "INSERT INTO ecomkassa_sessions (token, user_id, expires_at, updated_at) "
+            "VALUES (%s, %s, %s, CURRENT_TIMESTAMP) "
+            "ON CONFLICT (token) DO UPDATE SET "
+            "user_id = EXCLUDED.user_id, expires_at = EXCLUDED.expires_at, updated_at = CURRENT_TIMESTAMP",
+            (ecomkassa_token, user_id, expires_at_session)
+        )
+        cur.execute(
+            "INSERT INTO user_settings (user_id, ecomkassa_jwt_subject, updated_at) VALUES (%s, %s, CURRENT_TIMESTAMP) "
+            "ON CONFLICT (user_id) DO UPDATE SET "
+            "ecomkassa_jwt_subject = COALESCE(NULLIF(user_settings.ecomkassa_jwt_subject, ''), EXCLUDED.ecomkassa_jwt_subject), "
+            "updated_at = CURRENT_TIMESTAMP",
+            (user_id, jwt_subject)
+        )
+        conn.commit()
 
     embed_token = secrets.token_urlsafe(32)
     expires_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=EMBED_TOKEN_TTL_SECONDS)
