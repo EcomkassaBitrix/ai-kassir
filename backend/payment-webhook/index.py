@@ -95,6 +95,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         chat_id = get_telegram_chat_id(cur, receipt.get('user_id', ''))
         bot_token = get_bot_token(cur)
 
+        print(f"[DEBUG] Notify attempt: user_id={receipt.get('user_id')}, chat_id={chat_id}, bot_token_present={bool(bot_token)}")
+
         if chat_id and bot_token:
             send_payment_notification(bot_token, chat_id, receipt)
             cur.execute(
@@ -102,6 +104,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 (receipt['id'],)
             )
             conn.commit()
+        else:
+            print(f"[DEBUG] Notification skipped: missing chat_id or bot_token for receipt id={receipt['id']}")
 
     cur.close()
     conn.close()
@@ -126,17 +130,9 @@ def get_telegram_chat_id(cur, user_id: str):
 
 
 def get_bot_token(cur) -> str:
+    default_token = '8367558133:AAG8btCuHLitqaRlgS_HwUsgSIRO8bZJCr0'
     env_token = os.environ.get('TELEGRAM_BOT_TOKEN')
-    if env_token:
-        return env_token
-    try:
-        cur.execute("SELECT setting_value FROM ai_settings WHERE setting_key = 'telegram_bot_token'")
-        row = cur.fetchone()
-        if row:
-            return row.get('setting_value', '')
-    except Exception:
-        pass
-    return ''
+    return env_token if env_token else default_token
 
 
 def send_payment_notification(bot_token: str, chat_id: int, receipt: Dict[str, Any]) -> None:
@@ -154,14 +150,12 @@ def send_payment_notification(bot_token: str, chat_id: int, receipt: Dict[str, A
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     data = {'chat_id': chat_id, 'text': text, 'parse_mode': 'HTML'}
 
-    for attempt in range(2):
-        try:
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(data).encode('utf-8'),
-                headers={'Content-Type': 'application/json'}
-            )
-            urllib.request.urlopen(req, timeout=5)
-            return
-        except Exception:
-            continue
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode('utf-8'),
+            headers={'Content-Type': 'application/json'}
+        )
+        urllib.request.urlopen(req, timeout=4)
+    except Exception as e:
+        print(f"[DEBUG] Telegram send failed: {e}")
