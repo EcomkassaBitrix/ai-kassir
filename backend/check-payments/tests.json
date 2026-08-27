@@ -1,0 +1,16 @@
+{
+  "tests": [
+    {
+      "name": "Test OPTIONS for CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Test forbidden without token",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 403
+    }
+  ]
+}
