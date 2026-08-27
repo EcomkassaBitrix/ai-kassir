@@ -195,12 +195,17 @@ def handle_issue_from_token(body_data: Dict[str, Any]) -> Dict[str, Any]:
             conn.close()
             return json_response(401, {'error': 'Токен недействителен или истёк, войдите заново'})
 
-        # IMPORTANT: profile/firm only returns company+store data, which can be IDENTICAL
-        # across different accounts (e.g. shared demo/test company in Ecomkassa) — matching
-        # by store or firm would silently mix up two different merchants. The JWT "sub" claim
-        # is the only value here that is unique per actual login, so we derive a stable,
-        # collision-free user_id from it (same login always maps to the same user_id; two
-        # different logins never collide, even if their stores/company look identical).
+        firm_id = (profile.get('firmId') or '').strip()
+        tax_identity = (profile.get('taxIdentity') or '').strip()
+
+        # IMPORTANT: profile/firm store/company data can be IDENTICAL across different
+        # accounts (e.g. a shared demo/test company in Ecomkassa with several logins) — so
+        # firm_id/tax_identity alone cannot safely tell two real merchants apart. The JWT
+        # "sub" claim is unique per actual login, so it stays the PRIMARY identity key.
+        # firm_id/tax_identity are saved alongside it purely as a resilience fallback: if
+        # Ecomkassa ever changes its token format so "sub" can no longer be parsed, we can
+        # still recognize a RETURNING account (one we already saved firm_id for) instead of
+        # silently spawning a brand-new, disconnected user_id every time.
         jwt_subject = extract_jwt_subject(ecomkassa_token)
 
         user_id = None
@@ -212,6 +217,19 @@ def handle_issue_from_token(body_data: Dict[str, Any]) -> Dict[str, Any]:
             subj_row = cur.fetchone()
             if subj_row:
                 user_id = subj_row[0]
+        elif firm_id and tax_identity:
+            # jwt_subject unavailable (unexpected token format) — fall back to a firm match,
+            # but only reuse an account that itself has no jwt_subject on record (meaning it
+            # was created via this same fallback before), so we never merge a fallback-only
+            # guess into a real, jwt-verified merchant account.
+            cur.execute(
+                "SELECT user_id FROM user_settings WHERE ecomkassa_firm_id = %s AND ecomkassa_tax_identity = %s "
+                "AND (ecomkassa_jwt_subject IS NULL OR ecomkassa_jwt_subject = '') LIMIT 1",
+                (firm_id, tax_identity)
+            )
+            fallback_row = cur.fetchone()
+            if fallback_row:
+                user_id = fallback_row[0]
 
         if not user_id:
             subject_key = jwt_subject or ecomkassa_token
@@ -226,11 +244,14 @@ def handle_issue_from_token(body_data: Dict[str, Any]) -> Dict[str, Any]:
             (ecomkassa_token, user_id, expires_at_session)
         )
         cur.execute(
-            "INSERT INTO user_settings (user_id, ecomkassa_jwt_subject, updated_at) VALUES (%s, %s, CURRENT_TIMESTAMP) "
+            "INSERT INTO user_settings (user_id, ecomkassa_jwt_subject, ecomkassa_firm_id, ecomkassa_tax_identity, updated_at) "
+            "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP) "
             "ON CONFLICT (user_id) DO UPDATE SET "
             "ecomkassa_jwt_subject = COALESCE(NULLIF(user_settings.ecomkassa_jwt_subject, ''), EXCLUDED.ecomkassa_jwt_subject), "
+            "ecomkassa_firm_id = COALESCE(NULLIF(user_settings.ecomkassa_firm_id, ''), EXCLUDED.ecomkassa_firm_id), "
+            "ecomkassa_tax_identity = COALESCE(NULLIF(user_settings.ecomkassa_tax_identity, ''), EXCLUDED.ecomkassa_tax_identity), "
             "updated_at = CURRENT_TIMESTAMP",
-            (user_id, jwt_subject)
+            (user_id, jwt_subject, firm_id or None, tax_identity or None)
         )
         conn.commit()
 
