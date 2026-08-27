@@ -1952,6 +1952,7 @@ def create_ecomkassa_receipt(
     ecomkassa_payload = {
         'external_id': unique_id,
         'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+        'callback_url': 'https://functions.poehali.dev/1aebb0d3-66b8-4fff-8326-0af15baa2d33',
         'receipt': {
             'client': {
                 'email': client_data.get('email', '')
