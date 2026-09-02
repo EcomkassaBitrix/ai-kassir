@@ -115,6 +115,9 @@
     var iframe = document.createElement('iframe');
     iframe.style.cssText = 'width:100%;height:100%;border:0;display:block;';
     iframe.setAttribute('title', 'ИИ-кассир');
+    // Без этого атрибута браузер блокирует доступ к микрофону внутри iframe,
+    // даже если разрешение на сайте-партнёре уже выдано пользователем.
+    iframe.setAttribute('allow', 'microphone');
 
     panel.appendChild(closeBtn);
     panel.appendChild(iframe);

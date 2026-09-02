@@ -11,11 +11,12 @@ export const useVoiceInput = (setInput: (value: string) => void) => {
     }
 
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
     } catch (error: any) {
       console.error('Microphone permission error:', error);
       if (error.name === 'NotAllowedError') {
-        toast.error('Доступ к микрофону запрещен. Разрешите доступ в настройках Safari: Настройки → Веб-сайты → Микрофон');
+        toast.error('Доступ к микрофону запрещён. В Safari: Настройки → Веб-сайты → Микрофон. Если не поможет — macOS: Системные настройки → Конфиденциальность и безопасность → Распознавание речи → включите Safari');
       } else if (error.name === 'NotFoundError') {
         toast.error('Микрофон не найден. Подключите микрофон к устройству');
       } else {
