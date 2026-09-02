@@ -198,42 +198,35 @@ def handle_issue_from_token(body_data: Dict[str, Any]) -> Dict[str, Any]:
         firm_id = (profile.get('firmId') or '').strip()
         tax_identity = (profile.get('taxIdentity') or '').strip()
 
-        # IMPORTANT: profile/firm store/company data can be IDENTICAL across different
-        # accounts (e.g. a shared demo/test company in Ecomkassa with several logins) — so
-        # firm_id/tax_identity alone cannot safely tell two real merchants apart. The JWT
-        # "sub" claim is unique per actual login, so it stays the PRIMARY identity key.
-        # firm_id/tax_identity are saved alongside it purely as a resilience fallback: if
-        # Ecomkassa ever changes its token format so "sub" can no longer be parsed, we can
-        # still recognize a RETURNING account (one we already saved firm_id for) instead of
-        # silently spawning a brand-new, disconnected user_id every time.
+        # NOTE: the JWT "sub" claim looked like a per-account identifier at first, but it
+        # actually ROTATES on every fresh login of the same account (verified empirically:
+        # same login, different day → different sub) — so it CANNOT be used as a persistent
+        # identity key, it would silently spawn a new disconnected user_id every session.
+        # firm_id + tax_identity (company id + INN) is the only value from a token-only
+        # lookup that is genuinely stable across sessions for the same real merchant, so it
+        # is now the PRIMARY key. The one known caveat: Ecomkassa's own shared demo/sandbox
+        # company exposes the identical firm_id to several internal test logins — a
+        # non-issue for real merchants, who each have their own distinct company/INN.
         jwt_subject = extract_jwt_subject(ecomkassa_token)
 
         user_id = None
-        if jwt_subject:
-            cur.execute(
-                "SELECT user_id FROM user_settings WHERE ecomkassa_jwt_subject = %s LIMIT 1",
-                (jwt_subject,)
-            )
-            subj_row = cur.fetchone()
-            if subj_row:
-                user_id = subj_row[0]
-        elif firm_id and tax_identity:
-            # jwt_subject unavailable (unexpected token format) — fall back to a firm match,
-            # but only reuse an account that itself has no jwt_subject on record (meaning it
-            # was created via this same fallback before), so we never merge a fallback-only
-            # guess into a real, jwt-verified merchant account.
+        if firm_id and tax_identity:
+            # Prefer an existing account that already has a known Ecomkassa login attached
+            # (a "real", previously-set-up account, e.g. via mobile-auth or regular Settings)
+            # over a bare token-only stub we may have auto-created before — so a returning
+            # merchant always lands back on their real, already-configured account.
             cur.execute(
                 "SELECT user_id FROM user_settings WHERE ecomkassa_firm_id = %s AND ecomkassa_tax_identity = %s "
-                "AND (ecomkassa_jwt_subject IS NULL OR ecomkassa_jwt_subject = '') LIMIT 1",
+                "ORDER BY (ecomkassa_login IS NOT NULL AND ecomkassa_login != '') DESC, created_at ASC LIMIT 1",
                 (firm_id, tax_identity)
             )
-            fallback_row = cur.fetchone()
-            if fallback_row:
-                user_id = fallback_row[0]
+            firm_row = cur.fetchone()
+            if firm_row:
+                user_id = firm_row[0]
 
         if not user_id:
-            subject_key = jwt_subject or ecomkassa_token
-            user_id = 'ecom_jwt_' + hashlib.sha256(subject_key.encode('utf-8')).hexdigest()[:24]
+            identity_key = (firm_id + '|' + tax_identity) if (firm_id and tax_identity) else ecomkassa_token
+            user_id = 'ecom_jwt_' + hashlib.sha256(identity_key.encode('utf-8')).hexdigest()[:24]
 
         expires_at_session = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
         cur.execute(
@@ -415,9 +408,11 @@ def handle_exchange(body_data: Dict[str, Any]) -> Dict[str, Any]:
     Exchanges the one-time embed token for the canonical user_id. Token is single-use and short-lived.
 
     Also resolves which Ecomkassa store (group_code) the chat should post receipts to:
-    - If the account already has a group_code saved (returning user / previously configured
-      in regular Settings) — reuse it, nothing to ask.
-    - Else if the partner passed shop_id when issuing the embed token — use that directly.
+    - If the partner passed shop_id when issuing the embed token — always trust it (it
+      reflects the partner's own "default store" setting, which can change between visits,
+      so it must win over whatever store was saved on a previous visit).
+    - Else if the account already has a group_code saved (returning user / previously
+      configured in regular Settings) — reuse it, nothing to ask.
     - Else if the account has exactly one store in Ecomkassa — auto-select it.
     - Else (multiple stores, no shop_id given) — return the store list so /embed can show a
       one-time picker before the chat opens; the token stays valid for a follow-up
@@ -476,21 +471,25 @@ def handle_exchange(body_data: Dict[str, Any]) -> Dict[str, Any]:
         'ecomkassa_login': ecomkassa_login or ''
     }
 
-    if group_code:
-        # Returning user (or already picked a store in regular Settings) — nothing to resolve.
+    if partner_shop_id:
+        # Partner told us exactly which store to use (their own "default store" setting) —
+        # always trust it over a previously saved group_code, since the partner's default
+        # can change between visits and must take priority.
+        if partner_shop_id != group_code:
+            stores = resolve_stores_for_user(cur, user_id, ecomkassa_login, ecomkassa_password) or []
+            matched = next((s for s in stores if s['storeId'] == partner_shop_id), None)
+            cur.execute(
+                "UPDATE user_settings SET group_code = %s, payment_address = %s, updated_at = CURRENT_TIMESTAMP WHERE user_id = %s",
+                (partner_shop_id, matched['storeAddress'] if matched else '', user_id)
+            )
         conn.commit()
         cur.close()
         conn.close()
         return json_response(200, result)
 
-    if partner_shop_id:
-        # Partner told us exactly which store to use — trust it, try to also grab its address.
-        stores = resolve_stores_for_user(cur, user_id, ecomkassa_login, ecomkassa_password) or []
-        matched = next((s for s in stores if s['storeId'] == partner_shop_id), None)
-        cur.execute(
-            "UPDATE user_settings SET group_code = %s, payment_address = COALESCE(NULLIF(payment_address, ''), %s), updated_at = CURRENT_TIMESTAMP WHERE user_id = %s",
-            (partner_shop_id, matched['storeAddress'] if matched else '', user_id)
-        )
+    if group_code:
+        # Returning user (or already picked a store in regular Settings), no shop_id passed
+        # this time — reuse the saved store, nothing to ask.
         conn.commit()
         cur.close()
         conn.close()
